@@ -123,7 +123,7 @@ label.opc,label.chk{text-transform:none;letter-spacing:0;color:var(--txt);font-w
 .pg.orc .c{text-align:center}
 .pg.orc ul{margin:0 0 18px;padding-left:26px}
 .pg.orc li{margin:0 0 2px}
-.pg.orc .nota{font-style:italic;font-size:13.5px;margin:-8px 0 18px}
+.pg.orc .nota{font-style:italic;font-size:13.5px;color:var(--ouro);margin:-14px 0 18px 26px}
 .pg.orc .tot{color:var(--ouro);font-weight:700;font-size:20px;margin:14px 0 22px}
 .pg.orc .ass{text-align:center;line-height:1.5;margin-top:10px}
 .pg.orc .grade{display:flex;flex-wrap:wrap;padding:0 30px}
@@ -351,9 +351,9 @@ function modeloMao(){
     pixDe:'saymon',
     pagto:{c:'d', t:'Agendamento de eventos mediante disponibilidade de data, somente com o adiantamento de 50% do valor contratado que poderá ser pago em espécie ou depositado/transferido para a conta a seguir:'},
     obs:'',
-    rodape:'São mais de 17 anos fazendo o que mais amamos: entregar um churrasco gostoso, bem preparado e sem complicação. Fale com a gente e garanta a data do seu evento!',
+    rodape:'São 20 anos fazendo o que mais amamos: entregar um churrasco gostoso, bem preparado e sem complicação. Fale com a gente e garanta a data do seu evento!',
     fecho:'Se tiver dúvidas ou quiser fazer alterações estamos a disposição.',
-    assinatura:'Atenciosamente,\nSaymon/Mayron\n' + CONFIG.TELEFONES
+    assinatura:'Atenciosamente,\nSaymon\n(61) 98265-5292'
   };
 }
 
@@ -569,19 +569,20 @@ function formBuffet(o){
     <div id="vUm">
       <label>Pacote escolhido</label>
       <select data-b="valores.escolhido"><option value="sem">Sem bebidas</option><option value="refri">Com refrigerantes (não alcoólico)</option><option value="alc">Com bebida alcoólica</option></select>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <div id="cpSem"><label>Sem bebidas — valor por pessoa (R$)</label><input inputmode="decimal" data-b="valores.pacotes.0.v" data-n></div>
+      <div id="cpRefri"><label>Com refrigerantes — valor por pessoa (R$)</label><input inputmode="decimal" data-b="valores.pacotes.1.v" data-n></div>
+    </div>
+    <div class="pac" style="margin-top:10px" id="cpAlc"><div class="tit">Com bebida alcoólica</div>
+      <div class="row"><div style="flex:2"><label>Marca da cerveja (se o cliente já escolheu)</label><input data-b="valores.marcaCerveja" placeholder="Ex.: Heineken"></div><div><label>Valor por pessoa (R$)</label><input inputmode="decimal" data-b="valores.pacotes.2.v" data-n></div></div>
+      <div class="mudo" id="dicaAlc" style="margin-top:6px"></div>
+    </div>
+    <div id="vUm2">
       <label class="chk"><input type="checkbox" data-b="valores.mostrarPP"> Mostrar o valor por pessoa</label>
       <label class="chk"><input type="checkbox" data-b="valores.mostrarTotal"> Mostrar o valor total do orçamento</label>
       <div class="row"><div>${campo('Valor total (R$)','inputmode="decimal" data-b="valores.total" data-n id="inTotal"')}</div><div><label>&nbsp;</label><button class="g" id="btnCalc" style="width:100%">Calcular: adultos × valor</button></div></div>
       <div class="mudo" id="calcDica" style="margin-top:6px"></div>
-    </div>
-    <div class="pagtit">Valor por pessoa</div>
-    <div class="row">
-      <div><label>Sem bebidas (R$)</label><input inputmode="decimal" data-b="valores.pacotes.0.v" data-n></div>
-      <div><label>Com refrigerantes (R$)</label><input inputmode="decimal" data-b="valores.pacotes.1.v" data-n></div>
-    </div>
-    <div class="pac" style="margin-top:10px"><div class="tit">Com bebida alcoólica</div>
-      <div class="row"><div style="flex:2"><label>Marca da cerveja (se o cliente já escolheu)</label><input data-b="valores.marcaCerveja" placeholder="Ex.: Heineken"></div><div><label>Valor por pessoa (R$)</label><input inputmode="decimal" data-b="valores.pacotes.2.v" data-n></div></div>
-      <div class="mudo" id="dicaAlc" style="margin-top:6px"></div>
     </div>
   </div></details>
 
@@ -665,7 +666,12 @@ function atualizarTotais(){
   const v=o.valores;
   c.querySelector('#convQtd')?.classList.toggle('hidden', o.convidados.modo!=='definido');
   const dc=c.querySelector('#dicaConv'); if(dc) dc.textContent=o.convidados.modo==='definido'?`${num(o.convidados.qtd)||0} adultos`:`mínimo de ${CONFIG.MINIMO_ADULTOS}`;
-  c.querySelector('#vUm')?.classList.toggle('hidden', v.modo!=='um');
+  const um=v.modo==='um', e=v.escolhido||'sem';
+  c.querySelector('#vUm')?.classList.toggle('hidden', !um); c.querySelector('#vUm2')?.classList.toggle('hidden', !um);
+  c.querySelector('#cpSem')?.classList.toggle('hidden', um && e!=='sem');
+  c.querySelector('#cpRefri')?.classList.toggle('hidden', um && e!=='refri');
+  c.querySelector('#cpAlc')?.classList.toggle('hidden', um && e!=='alc');
+  const pp=c.querySelector('[data-b="valores.mostrarPP"]'); if(pp) pp.closest('label').classList.toggle('hidden', um && e==='alc' && !(v.marcaCerveja||'').trim());
   const da=c.querySelector('#dicaAlc'); if(da) da.textContent = (v.marcaCerveja||'').trim() ? `Sai no orçamento: “cerveja ${v.marcaCerveja.trim()}” com o valor por pessoa.` : 'Sem marca: sai “cerveja e caipirosca…*” e a nota de que o valor depende da marca escolhida.';
   const cd=c.querySelector('#calcDica'); if(cd){ const q=num(o.convidados.qtd), pp=ppEscolhido(o); cd.textContent = o.convidados.modo==='definido' ? `${q} adultos × ${moeda(pp)} = ${moeda(q*pp)}` : 'Defina a quantidade de adultos em “Convidados” pra calcular automaticamente.'; }
   c.querySelectorAll('.opc').forEach(l=>l.classList.toggle('on', l.querySelector('input').checked));
@@ -817,7 +823,7 @@ function paginasBuffet(o){
 function paginasMao(o){
   const extras=(o.extras||[]).filter(e=>e.t||num(e.v));
   let val=`<p style="margin:0"><b>Valores:</b></p><ul><li>${esc(o.valorBaseTexto)} <span class="d">${moeda(o.valorBase)}</span> (${extenso(o.valorBase)})${extras.length?';':'.'}</li>${extras.map((e,i)=>`<li>${esc(e.t)} <span class="d">${moeda(e.v)}</span> (${extenso(e.v)})${i===extras.length-1?'.':';'}</li>`).join('')}</ul>`;
-  val+=`<div class="tot">Valor total: ${moeda(totalDe(o))} (${extenso(totalDe(o))}).</div>`;
+  if(extras.length) val+=`<div class="tot">Valor total: ${moeda(totalDe(o))} (${extenso(totalDe(o))}).</div>`;
   const corpo=`<div class="corpo"><h3>${esc(o.titulo)}</h3><div class="sub">${esc(o.subtitulo)}</div>${o.intro.map(par).join('')}<p style="margin:0"><b>${esc(o.inclusoTitulo)}</b></p><ul>${o.incluso.filter(x=>x.trim()).map(i=>`<li>${esc(i)}</li>`).join('')}</ul>${val}${par(o.pagto)}${blocoPix(o)}${o.rodape?`<p>${esc(o.rodape)}</p>`:''}${fechoAss(o)}</div>`;
   return [`<div class="pg orc mao" data-rodape="190"><div class="miolo">${cabOrc(o)}${corpo}</div>${fimPag(true)}</div>`];
 }
@@ -888,6 +894,8 @@ async function gerarPdf(){
       const cv=await html2canvas(pgs[i],{scale:2,useCORS:true,backgroundColor:null,logging:false,width:794,height:1123,windowWidth:794});
       if(i>0) pdf.addPage();
       pdf.addImage(cv.toDataURL('image/jpeg',0.92),'JPEG',0,0,210,297);
+      const pr=pgs[i].getBoundingClientRect(), k=210/794;
+      pgs[i].querySelectorAll('a[href]').forEach(a=>{ const b=a.getBoundingClientRect(); pdf.link((b.left-pr.left)*k,(b.top-pr.top)*k,b.width*k,b.height*k,{url:a.href}); });
     }
     r.innerHTML='';
     const blob=pdf.output('blob'); const file=new File([blob], d.nome, {type:'application/pdf'});
