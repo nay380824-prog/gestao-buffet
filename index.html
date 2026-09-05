@@ -123,6 +123,7 @@ label.opc,label.chk{text-transform:none;letter-spacing:0;color:var(--txt);font-w
 .pg.orc .c{text-align:center}
 .pg.orc ul{margin:0 0 18px;padding-left:26px}
 .pg.orc li{margin:0 0 2px}
+.pg.orc .nota{font-style:italic;font-size:13.5px;margin:-8px 0 18px}
 .pg.orc .tot{color:var(--ouro);font-weight:700;font-size:20px;margin:14px 0 22px}
 .pg.orc .ass{text-align:center;line-height:1.5;margin-top:10px}
 .pg.orc .grade{display:flex;flex-wrap:wrap;padding:0 30px}
@@ -270,6 +271,14 @@ const CONFIG = {
   }
 };
 
+// Textos fixos dos pacotes (não editáveis no app)
+const PACOTES_TXT = {
+  sem:  'Individual sem bebidas',
+  refri:'Individual com refrigerantes coca-cola, fanta laranja e guaraná (normal e zero), sucos em caixa (três sabores) e água mineral sem gás',
+  alc:  'Individual com refrigerantes coca-cola, fanta laranja e guaraná (normal e zero), sucos em caixa (três sabores), água mineral sem gás, cerveja{cerveja} e caipirosca com vodka tridestilada (limão, abacaxi e maracujá)'
+};
+const NOTA_CERVEJA = 'O valor por pessoa será definido a partir da marca de cerveja escolhida pelo cliente';
+
 const STATUS = [
   ['rascunho','Rascunho'],['enviado','Orçamento enviado'],['aprovado','Orçamento aprovado'],
   ['contrato_enviado','Contrato enviado'],['contrato_assinado','Contrato assinado'],
@@ -298,15 +307,8 @@ function modeloBuffet(){
       mostrarPP:false,       // no modo 'um': mostra o valor por pessoa?
       mostrarTotal:true,     // no modo 'um': mostra o valor total?
       total:0,
-      marcaCerveja:'',
-      alcPorMarca:true,      // no modo 'todos': valor do alcoólico definido pela marca
-      alcFrase:'o valor por pessoa será definido a partir da marca de cerveja escolhida pelo cliente (a partir de R$ 115,00 com Skol ou Antarctica)',
-      pacotes:[
-        {id:'sem',   t:'Individual sem bebidas', v:75},
-        {id:'refri', t:'Individual com refrigerantes coca-cola, fanta laranja e guaraná (normal e zero), sucos em caixa (três sabores) e água mineral sem gás', v:90},
-        {id:'alc',   t:'Individual com refrigerantes coca-cola, fanta laranja e guaraná (normal e zero), sucos em caixa (três sabores), água mineral sem gás, cerveja {cerveja} e caipirosca com vodka tridestilada (limão, abacaxi e maracujá)', v:115}
-      ],
-      cervejaPadrao:'Skol ou Antarctica (outras marcas a combinar com acréscimo no valor)'
+      marcaCerveja:'',       // se o cliente já escolheu, sai "cerveja Heineken" + valor
+      pacotes:[ {id:'sem', v:75}, {id:'refri', v:90}, {id:'alc', v:''} ]
     },
     obs:'',
     fecho:'Se tiver dúvidas ou quiser fazer alterações estamos a disposição.',
@@ -524,6 +526,13 @@ function ligar(container, base, aoMudar){
     });
   });
 }
+const DIAS=['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+function diaSemana(c,selIn,selOut){
+  const i=c.querySelector(selIn), o=c.querySelector(selOut); if(!i||!o) return;
+  i.onclick=()=>{ try{ i.showPicker(); }catch(e){} };
+  if(!i.value){ o.textContent='Toque pra abrir o calendário'; return; }
+  const d=new Date(i.value+'T12:00:00'); o.innerHTML=`📅 <b style="color:var(--ouro)">${DIAS[d.getDay()]}</b>, ${dataBR(i.value)}`;
+}
 const campo=(lbl,attrs)=>`<label>${lbl}</label><input ${attrs}>`;
 const linha=(val,extra='')=>`<div class="lin"><input value="${esc(val)}" ${extra}><button class="x" title="remover">×</button></div>`;
 
@@ -532,13 +541,13 @@ function desenharOrc(){
   const cab=`
   <details class="sec" open><summary>👤 Cliente e evento</summary><div class="corpo">
     <div class="row"><div>${campo('Nome do cliente','data-b="cliente"')}</div><div>${campo('Telefone / WhatsApp','data-b="telefone" inputmode="tel"')}</div></div>
-    <div class="row"><div>${campo('Data do evento','type="date" data-b="dataEvento"')}</div><div>${campo('Local (cidade/endereço)','data-b="local"')}</div></div>
+    <div class="row"><div>${campo('Data do evento','type="date" data-b="dataEvento" id="inData"')}<div class="mudo" id="diaSemana" style="margin-top:4px"></div></div><div>${campo('Local (cidade/endereço)','data-b="local"')}</div></div>
     <div class="row"><div><label>Responsável (dados do Pix)</label><select data-b="pixDe"><option value="saymon">Saymon</option><option value="mayron">Mayron</option></select></div>
     <div>${campo('Ano do orçamento','type="number" data-b="ano"')}</div><div>${campo('Validade (dias)','type="number" data-b="validade"')}</div></div>
   </div></details>`;
   c.innerHTML = cab + (o.tipo==='mao'?formMao(o):formBuffet(o));
-  ligar(c, o, (p)=>{ if(p==='cliente') atualizarCab(); if(p.startsWith('convidados')||p.startsWith('valores.')) atualizarTotais(); });
-  acoesOrc(c,o);
+  ligar(c, o, (p)=>{ if(p==='cliente') atualizarCab(); if(p==='dataEvento') diaSemana(c,'#inData','#diaSemana'); if(p.startsWith('convidados')||p.startsWith('valores.')) atualizarTotais(); });
+  diaSemana(c,'#inData','#diaSemana'); acoesOrc(c,o);
 }
 
 function formBuffet(o){
@@ -546,36 +555,34 @@ function formBuffet(o){
   return `
   <details class="sec" open><summary>👥 Convidados <span class="dica" id="dicaConv"></span></summary><div class="corpo">
     <div class="opcoes">
-      <label class="opc"><input type="radio" name="cm" value="minimo" data-b="convidados.modo"><div><b>Padrão:</b> “mínimo de ${CONFIG.MINIMO_ADULTOS} adultos”<br><span class="mudo">Orçamento por pessoa, sem quantidade fechada.</span></div></label>
-      <label class="opc"><input type="radio" name="cm" value="definido" data-b="convidados.modo"><div><b>Quantidade definida:</b> “N adultos”<br><span class="mudo">Pra grupos menores ou quando o cliente já fechou o número de pagantes.</span></div></label>
+      <label class="opc"><input type="radio" name="cm" value="minimo" data-b="convidados.modo"><div><b>Padrão:</b> “mínimo de ${CONFIG.MINIMO_ADULTOS} adultos”</div></label>
+      <label class="opc"><input type="radio" name="cm" value="definido" data-b="convidados.modo"><div><b>Quantidade definida:</b> “N adultos”</div></label>
     </div>
     <div id="convQtd">${campo('Quantidade de adultos (pagantes)','type="number" inputmode="numeric" data-b="convidados.qtd" data-n')}</div>
   </div></details>
 
   <details class="sec" open><summary>💰 Pacotes e valores</summary><div class="corpo">
     <div class="opcoes">
-      <label class="opc"><input type="radio" name="vm" value="todos" data-b="valores.modo"><div><b>Mostrar os 3 pacotes com valor por pessoa</b><br><span class="mudo">O modelo completo, como sempre foi enviado.</span></div></label>
-      <label class="opc"><input type="radio" name="vm" value="um" data-b="valores.modo"><div><b>Só o pacote que o cliente escolheu</b><br><span class="mudo">Some os outros e mostra o valor total do orçamento.</span></div></label>
-    </div>
-    <div id="vTodos">
-      <label class="chk"><input type="checkbox" data-b="valores.alcPorMarca"> No pacote com bebida alcoólica, informar que o valor depende da marca da cerveja</label>
-      <div id="alcFraseBox">${campo('Frase que aparece no pacote alcoólico','data-b="valores.alcFrase"')}</div>
+      <label class="opc"><input type="radio" name="vm" value="todos" data-b="valores.modo"><div><b>Mostrar os 3 pacotes com valor por pessoa</b></div></label>
+      <label class="opc"><input type="radio" name="vm" value="um" data-b="valores.modo"><div><b>Só o pacote que o cliente escolheu</b></div></label>
     </div>
     <div id="vUm">
       <label>Pacote escolhido</label>
       <select data-b="valores.escolhido"><option value="sem">Sem bebidas</option><option value="refri">Com refrigerantes (não alcoólico)</option><option value="alc">Com bebida alcoólica</option></select>
-      <div id="marcaBox">${campo('Marca da cerveja escolhida pelo cliente','data-b="valores.marcaCerveja" placeholder="Ex.: Heineken"')}</div>
       <label class="chk"><input type="checkbox" data-b="valores.mostrarPP"> Mostrar o valor por pessoa</label>
       <label class="chk"><input type="checkbox" data-b="valores.mostrarTotal"> Mostrar o valor total do orçamento</label>
       <div class="row"><div>${campo('Valor total (R$)','inputmode="decimal" data-b="valores.total" data-n id="inTotal"')}</div><div><label>&nbsp;</label><button class="g" id="btnCalc" style="width:100%">Calcular: adultos × valor</button></div></div>
       <div class="mudo" id="calcDica" style="margin-top:6px"></div>
     </div>
-    <div class="pagtit">Texto e valor por pessoa de cada pacote</div>
-    ${v.pacotes.map((p,i)=>`<div class="pac"><div class="tit">${['Sem bebidas','Com refrigerantes','Com bebida alcoólica'][i]||'Pacote'}</div>
-      <textarea data-b="valores.pacotes.${i}.t"></textarea>
-      <div class="row" style="margin-top:6px"><div><label>Valor por pessoa (R$)</label><input inputmode="decimal" data-b="valores.pacotes.${i}.v" data-n></div></div></div>`).join('')}
-    <div class="mudo">No pacote alcoólico, <b>{cerveja}</b> é trocado pela marca escolhida (ou pelo texto padrão abaixo).</div>
-    ${campo('Texto padrão da cerveja (quando o cliente ainda não escolheu)','data-b="valores.cervejaPadrao"')}
+    <div class="pagtit">Valor por pessoa</div>
+    <div class="row">
+      <div><label>Sem bebidas (R$)</label><input inputmode="decimal" data-b="valores.pacotes.0.v" data-n></div>
+      <div><label>Com refrigerantes (R$)</label><input inputmode="decimal" data-b="valores.pacotes.1.v" data-n></div>
+    </div>
+    <div class="pac" style="margin-top:10px"><div class="tit">Com bebida alcoólica</div>
+      <div class="row"><div style="flex:2"><label>Marca da cerveja (se o cliente já escolheu)</label><input data-b="valores.marcaCerveja" placeholder="Ex.: Heineken"></div><div><label>Valor por pessoa (R$)</label><input inputmode="decimal" data-b="valores.pacotes.2.v" data-n></div></div>
+      <div class="mudo" id="dicaAlc" style="margin-top:6px"></div>
+    </div>
   </div></details>
 
   <details class="sec"><summary>📝 Textos da 1ª página <span class="dica">parágrafos</span></summary><div class="corpo">
@@ -648,7 +655,7 @@ function acoesOrc(c,o){
   const calc=c.querySelector('#btnCalc'); if(calc) calc.onclick=()=>{ const pp=ppEscolhido(o); const q=num(o.convidados.qtd); o.valores.total=Math.round(pp*q*100)/100; c.querySelector('#inTotal').value=o.valores.total?String(o.valores.total).replace('.',','):''; atualizarTotais(); };
   const zap=c.querySelector('#btnCopiarZap'); if(zap) zap.onclick=()=>{ navigator.clipboard.writeText(textoZap(o)).then(()=>toast('Texto copiado!')); };
   // abrir/fechar blocos conforme o modo
-  c.querySelectorAll('[name=cm],[name=vm],[data-b="valores.escolhido"],[data-b="valores.alcPorMarca"]').forEach(el=>el.addEventListener('change',atualizarTotais));
+  c.querySelectorAll('[name=cm],[name=vm],[data-b="valores.escolhido"]').forEach(el=>el.addEventListener('change',atualizarTotais));
   atualizarTotais();
 }
 function ppEscolhido(o){ const v=o.valores; const p=v.pacotes.find(p=>p.id===v.escolhido); return p?num(p.v):0; }
@@ -658,10 +665,8 @@ function atualizarTotais(){
   const v=o.valores;
   c.querySelector('#convQtd')?.classList.toggle('hidden', o.convidados.modo!=='definido');
   const dc=c.querySelector('#dicaConv'); if(dc) dc.textContent=o.convidados.modo==='definido'?`${num(o.convidados.qtd)||0} adultos`:`mínimo de ${CONFIG.MINIMO_ADULTOS}`;
-  c.querySelector('#vTodos')?.classList.toggle('hidden', v.modo!=='todos');
   c.querySelector('#vUm')?.classList.toggle('hidden', v.modo!=='um');
-  c.querySelector('#alcFraseBox')?.classList.toggle('hidden', !v.alcPorMarca);
-  c.querySelector('#marcaBox')?.classList.toggle('hidden', v.escolhido!=='alc');
+  const da=c.querySelector('#dicaAlc'); if(da) da.textContent = (v.marcaCerveja||'').trim() ? `Sai no orçamento: “cerveja ${v.marcaCerveja.trim()}” com o valor por pessoa.` : 'Sem marca: sai “cerveja e caipirosca…*” e a nota de que o valor depende da marca escolhida.';
   const cd=c.querySelector('#calcDica'); if(cd){ const q=num(o.convidados.qtd), pp=ppEscolhido(o); cd.textContent = o.convidados.modo==='definido' ? `${q} adultos × ${moeda(pp)} = ${moeda(q*pp)}` : 'Defina a quantidade de adultos em “Convidados” pra calcular automaticamente.'; }
   c.querySelectorAll('.opc').forEach(l=>l.classList.toggle('on', l.querySelector('input').checked));
 }
@@ -693,7 +698,7 @@ function desenharCtr(){
   <details class="sec" open><summary>📋 Objeto do contrato</summary><div class="corpo">
     ${campo('Tipo de serviço','data-b="servico"')}
     <div class="row"><div>${campo('Pessoas adultas','type="number" inputmode="numeric" data-b="pessoas" data-n')}</div><div>${campo('Valor total (R$)','inputmode="decimal" data-b="total" data-n id="ctrTotal"')}</div></div>
-    <div class="row"><div>${campo('Data do evento','type="date" data-b="data"')}</div><div>${campo('Início','type="time" data-b="horaIni"')}</div><div>${campo('Término','type="time" data-b="horaFim"')}</div></div>
+    <div class="row"><div>${campo('Data do evento','type="date" data-b="data" id="inDataC"')}<div class="mudo" id="diaSemanaC" style="margin-top:4px"></div></div><div>${campo('Início','type="time" data-b="horaIni"')}</div><div>${campo('Término','type="time" data-b="horaFim"')}</div></div>
     ${campo('Endereço do evento','data-b="endereco"')}
     <label class="chk"><input type="checkbox" data-b="adiantamentoAuto"> Adiantamento = 50% do total (automático)</label>
     <div id="adiBox">${campo('Adiantamento (R$)','inputmode="decimal" data-b="adiantamento" data-n')}</div>
@@ -711,7 +716,8 @@ function desenharCtr(){
     <label>Encerramento</label><textarea data-b="textos.final"></textarea>
     ${campo('Data do contrato','type="date" data-b="dataContrato"')}
   </div></details>`;
-  ligar(c,k,(p)=>{ if(p==='total'||p==='adiantamentoAuto'||p==='adiantamento') adiantamento(); });
+  ligar(c,k,(p)=>{ if(p==='total'||p==='adiantamentoAuto'||p==='adiantamento') adiantamento(); if(p==='data') diaSemana(c,'#inDataC','#diaSemanaC'); });
+  diaSemana(c,'#inDataC','#diaSemanaC');
   c.querySelectorAll('[data-ext]').forEach(b=>b.onclick=()=>{ const t=b.dataset.ext; k.extras.push(t==='garcom'?{tipo:t,qtd:1,desc:'',v:0}:t==='aluguel'?{tipo:t,qtd:1,desc:'',v:0}:{tipo:'livre',t:''}); desenharCtr(); });
   c.querySelectorAll('[data-rmx]').forEach(b=>b.onclick=()=>{ k.extras.splice(+b.dataset.rmx,1); desenharCtr(); });
   adiantamento();
@@ -773,22 +779,21 @@ function fechoAss(o){ return `${o.obs?`<p>${esc(o.obs)}</p>`:''}<p class="c">${e
 function fimPag(semDuvida){ return `<div class="fim"><div class="txt">${semDuvida?'':'Em caso de dúvidas, seguimos à disposição.<br>'}Conheça o nosso instagram, clicando aqui:<br><a href="${CONFIG.INSTAGRAM_URL}">@churrascoembrasilia</a><br><br>Acesse o nosso site:<br><a href="${CONFIG.SITE_URL}">Clicando aqui</a></div><img src="${IMG_FLAG}"></div>`; }
 
 function valoresBuffet(o){
-  const v=o.valores; let html='';
-  if(v.modo==='todos'){
-    const lis=v.pacotes.map((p,i)=>{
-      const ult=i===v.pacotes.length-1; const fim=ult?'.':';';
-      let t=p.t.replace('{cerveja}', v.cervejaPadrao);
-      if(p.id==='alc' && v.alcPorMarca) return `<li>${esc(t)} — <span class="d">${esc(v.alcFrase)}</span>${fim}</li>`;
-      return `<li>${esc(t)} <span class="d">${moeda(p.v)}</span> (${extenso(p.v)})${fim}</li>`;
-    });
-    html=`<p style="margin:0"><b>Valores:</b></p><ul>${lis.join('')}</ul>`;
-  } else {
-    const p=v.pacotes.find(p=>p.id===v.escolhido)||v.pacotes[0];
-    let t=p.t.replace('{cerveja}', (p.id==='alc' && v.marcaCerveja) ? v.marcaCerveja : v.cervejaPadrao);
-    const pp = v.mostrarPP ? ` <span class="d">${moeda(p.v)}</span> (${extenso(p.v)})` : '';
-    html=`<p style="margin:0"><b>Valores:</b></p><ul><li>${esc(t)}${pp}.</li></ul>`;
-    if(v.mostrarTotal) html+=`<div class="tot">Valor total: ${moeda(v.total)} (${extenso(v.total)}).</div>`;
-  }
+  const v=o.valores; const marca=(v.marcaCerveja||'').trim();
+  const valorDe=id=>num((v.pacotes.find(p=>p.id===id)||{}).v);
+  // linha de um pacote; sem marca no alcoólico => asterisco + nota
+  const li=(id,fim,comValor)=>{
+    let t=PACOTES_TXT[id]; let nota=false;
+    if(id==='alc'){ if(marca) t=t.replace('{cerveja}',' '+marca); else { t=t.replace('{cerveja}',''); nota=true; } }
+    const val=(comValor && !nota) ? ` <span class="d">${moeda(valorDe(id))}</span> (${extenso(valorDe(id))})` : '';
+    return {html:`<li>${esc(t)}${nota?'<span class="d">*</span>':''}${val}${fim}</li>`, nota};
+  };
+  let lis=[], temNota=false;
+  if(v.modo==='todos'){ ['sem','refri','alc'].forEach((id,i)=>{ const r=li(id, i<2?';':'.', true); lis.push(r.html); temNota=temNota||r.nota; }); }
+  else { const r=li(v.escolhido||'sem','.', !!v.mostrarPP); lis.push(r.html); temNota=r.nota; }
+  let html=`<p style="margin:0"><b>Valores:</b></p><ul>${lis.join('')}</ul>`;
+  if(temNota) html+=`<p class="nota"><span class="d">*</span> ${NOTA_CERVEJA}.</p>`;
+  if(v.modo==='um' && v.mostrarTotal && num(v.total)>0) html+=`<div class="tot">Valor total: ${moeda(v.total)} (${extenso(v.total)}).</div>`;
   return html;
 }
 function secaoHtml(s){
