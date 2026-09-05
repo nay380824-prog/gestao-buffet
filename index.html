@@ -308,7 +308,7 @@ function modeloBuffet(){
     pixDe:'saymon',
     valores:{
       modo:'todos',          // 'todos' = 3 pacotes com valor | 'um' = só o pacote escolhido
-      escolhido:'alc',
+      escolhidos:['sem'],
       mostrarPP:false,       // no modo 'um': mostra o valor por pessoa?
       mostrarTotal:true,     // no modo 'um': mostra o valor total?
       total:0,
@@ -570,11 +570,13 @@ function formBuffet(o){
   <details class="sec" open><summary>💰 Pacotes e valores</summary><div class="corpo">
     <div class="opcoes">
       <label class="opc"><input type="radio" name="vm" value="todos" data-b="valores.modo"><div><b>Mostrar os 3 pacotes com valor por pessoa</b></div></label>
-      <label class="opc"><input type="radio" name="vm" value="um" data-b="valores.modo"><div><b>Só o pacote que o cliente escolheu</b></div></label>
+      <label class="opc"><input type="radio" name="vm" value="um" data-b="valores.modo"><div><b>Só o(s) pacote(s) que o cliente escolheu</b></div></label>
     </div>
     <div id="vUm">
-      <label>Pacote escolhido</label>
-      <select data-b="valores.escolhido"><option value="sem">Sem bebidas</option><option value="refri">Com refrigerantes (não alcoólico)</option><option value="alc">Com bebida alcoólica</option></select>
+      <label>Pacote(s) escolhido(s)</label>
+      <label class="chk" style="margin:4px 0"><input type="checkbox" class="esc" value="sem"> Sem bebidas</label>
+      <label class="chk" style="margin:4px 0"><input type="checkbox" class="esc" value="refri"> Com refrigerantes (não alcoólico)</label>
+      <label class="chk" style="margin:4px 0"><input type="checkbox" class="esc" value="alc"> Com bebida alcoólica</label>
     </div>
     <div class="row" style="margin-top:6px">
       <div id="cpSem"><label>Sem bebidas — valor por pessoa (R$)</label><input inputmode="decimal" data-b="valores.pacotes.0.v" data-n></div>
@@ -596,8 +598,6 @@ function formBuffet(o){
     <div id="introList">${o.intro.map((p,i)=>`<div class="lin" data-i="${i}"><button class="cor ${p.c==='d'?'dourado':'branco'}" data-cor="${i}" title="cor"></button><textarea data-b="intro.${i}.t"></textarea><button class="x" data-rmp="${i}">×</button></div>`).join('')}</div>
     <button class="g sm" id="btnAddP">+ Parágrafo</button>
     ${campo('Observação extra (opcional, aparece antes do fechamento)','data-b="obs" placeholder="Ex.: Inclui 1 garçom adicional…"')}
-    <label>Frase de fechamento</label><input data-b="fecho">
-    <label>Assinatura</label><textarea data-b="assinatura"></textarea>
   </div></details>
 
   <details class="sec"><summary>🍖 Cardápio <span class="dica">páginas 2 e 3</span></summary><div class="corpo" id="cardBox">${htmlCardapio(o)}</div></details>`;
@@ -607,10 +607,9 @@ function htmlCardapio(o){
   return o.cardapio.map((pg,pi)=>`<div class="pagtit">Página ${pi+2}</div>`+pg.map((s,si)=>`
     <div class="secao" data-p="${pi}" data-s="${si}">
       <div class="cab"><input data-b="cardapio.${pi}.${si}.t" placeholder="Título da seção">
-        <select data-b="cardapio.${pi}.${si}.l" style="width:110px;flex:none"><option value="meia">½ largura</option><option value="inteira">largura total</option></select>
         <button class="x" data-rms="${pi}.${si}">×</button></div>
       <div class="itens">${s.i.map((it,ii)=>`<div class="lin"><input data-b="cardapio.${pi}.${si}.i.${ii}"><button class="x" data-rmi="${pi}.${si}.${ii}">×</button></div>`).join('')}</div>
-      <div class="acoes" style="margin-top:4px"><button class="g sm" data-addi="${pi}.${si}">+ Item</button>${s.l==='inteira'?`<label class="chk" style="margin:0"><input type="checkbox" data-b="cardapio.${pi}.${si}.duas"> 2 colunas</label><span class="mudo" style="font-size:11.5px">(um item “---” marca onde começa a 2ª coluna)</span>`:''}</div>
+      <div class="acoes" style="margin-top:4px"><button class="g sm" data-addi="${pi}.${si}">+ Item</button></div>
     </div>`).join('')+`<button class="g sm" data-adds="${pi}">+ Seção na página ${pi+2}</button>`).join('');
 }
 
@@ -638,14 +637,12 @@ function formMao(o){
     <div class="lin"><button class="cor ${o.pagto.c==='d'?'dourado':'branco'}" data-corpg="1"></button><textarea data-b="pagto.t"></textarea></div>
     ${campo('Observação extra (opcional)','data-b="obs"')}
     <label>Texto final</label><textarea data-b="rodape"></textarea>
-    <label>Frase de fechamento</label><input data-b="fecho">
-    <label>Assinatura</label><textarea data-b="assinatura"></textarea>
     <div class="acoes"><button class="g sm" id="btnCopiarZap">Copiar texto pro WhatsApp</button></div>
   </div></details>`;
 }
 
 function acoesOrc(c,o){
-  const re=()=>{ desenharOrc(); };
+  const re=()=>{ const y=window.scrollY; const abertos=Array.from(c.querySelectorAll('details.sec')).map(d=>d.open); desenharOrc(); c.querySelectorAll('details.sec').forEach((d,i)=>{ if(abertos[i]!=null) d.open=abertos[i]; }); requestAnimationFrame(()=>window.scrollTo(0,y)); };
   c.querySelectorAll('[data-cor]').forEach(b=>b.onclick=()=>{ const p=o.intro[+b.dataset.cor]; p.c=p.c==='d'?'b':'d'; b.classList.toggle('dourado'); b.classList.toggle('branco'); });
   c.querySelectorAll('[data-corpg]').forEach(b=>b.onclick=()=>{ o.pagto.c=o.pagto.c==='d'?'b':'d'; b.classList.toggle('dourado'); b.classList.toggle('branco'); });
   c.querySelectorAll('[data-rmp]').forEach(b=>b.onclick=()=>{ o.intro.splice(+b.dataset.rmp,1); re(); });
@@ -661,23 +658,26 @@ function acoesOrc(c,o){
   const calc=c.querySelector('#btnCalc'); if(calc) calc.onclick=()=>{ const pp=ppEscolhido(o); const q=num(o.convidados.qtd); o.valores.total=Math.round(pp*q*100)/100; c.querySelector('#inTotal').value=o.valores.total?String(o.valores.total).replace('.',','):''; atualizarTotais(); };
   const zap=c.querySelector('#btnCopiarZap'); if(zap) zap.onclick=()=>{ navigator.clipboard.writeText(textoZap(o)).then(()=>toast('Texto copiado!')); };
   // abrir/fechar blocos conforme o modo
-  c.querySelectorAll('[name=cm],[name=vm],[data-b="valores.escolhido"]').forEach(el=>el.addEventListener('change',atualizarTotais));
+  c.querySelectorAll('[name=cm],[name=vm]').forEach(el=>el.addEventListener('change',atualizarTotais));
+  c.querySelectorAll('input.esc').forEach(cb=>{ cb.checked=escolhidos(o).includes(cb.value); cb.addEventListener('change',()=>{ o.valores.escolhidos=['sem','refri','alc'].filter(id=>c.querySelector(`input.esc[value=${id}]`).checked); atualizarTotais(); }); });
   atualizarTotais();
 }
-function ppEscolhido(o){ const v=o.valores; const p=v.pacotes.find(p=>p.id===v.escolhido); return p?num(p.v):0; }
+function escolhidos(o){ const v=o.valores; if(!Array.isArray(v.escolhidos)) v.escolhidos=[v.escolhido||'sem']; if(!v.escolhidos.length) v.escolhidos=['sem']; return v.escolhidos; }
+function ppEscolhido(o){ const e=escolhidos(o); if(e.length!==1) return 0; const p=o.valores.pacotes.find(p=>p.id===e[0]); return p?num(p.v):0; }
 function atualizarTotais(){
   const o=rec.orc, c=$('#abaOrc'); if(!c) return;
   if(o.tipo==='mao'){ const t=c.querySelector('#totMao'); if(t) t.textContent=moeda(totalDe(o)); const d=c.querySelector('#dicaTot'); if(d) d.textContent=moeda(totalDe(o)); return; }
   const v=o.valores;
   c.querySelector('#convQtd')?.classList.toggle('hidden', o.convidados.modo!=='definido');
   const dc=c.querySelector('#dicaConv'); if(dc) dc.textContent=o.convidados.modo==='definido'?`${num(o.convidados.qtd)||0} adultos`:`mínimo de ${CONFIG.MINIMO_ADULTOS}`;
-  const um=v.modo==='um', e=v.escolhido||'sem';
+  const um=v.modo==='um', e=escolhidos(o);
   c.querySelector('#vUm')?.classList.toggle('hidden', !um); c.querySelector('#vUm2')?.classList.toggle('hidden', !um);
-  c.querySelector('#cpSem')?.classList.toggle('hidden', um && e!=='sem');
-  c.querySelector('#cpRefri')?.classList.toggle('hidden', um && e!=='refri');
-  c.querySelector('#cpAlc')?.classList.toggle('hidden', um && e!=='alc');
-  const pp=c.querySelector('[data-b="valores.mostrarPP"]'); if(pp) pp.closest('label').classList.toggle('hidden', um && e==='alc' && !(v.marcaCerveja||'').trim());
-  const cd=c.querySelector('#calcDica'); if(cd){ const q=num(o.convidados.qtd), pp=ppEscolhido(o); cd.textContent = o.convidados.modo==='definido' ? `${q} adultos × ${moeda(pp)} = ${moeda(q*pp)}` : 'Defina a quantidade de adultos em “Convidados” pra calcular automaticamente.'; }
+  c.querySelector('#cpSem')?.classList.toggle('hidden', um && !e.includes('sem'));
+  c.querySelector('#cpRefri')?.classList.toggle('hidden', um && !e.includes('refri'));
+  c.querySelector('#cpAlc')?.classList.toggle('hidden', um && !e.includes('alc'));
+  const pp=c.querySelector('[data-b="valores.mostrarPP"]'); if(pp) pp.closest('label').classList.toggle('hidden', um && e.length===1 && e[0]==='alc' && !(v.marcaCerveja||'').trim());
+  const calc=c.querySelector('#btnCalc'); if(calc) calc.disabled = e.length!==1;
+  const cd=c.querySelector('#calcDica'); if(cd){ const q=num(o.convidados.qtd), pp=ppEscolhido(o); cd.textContent = e.length!==1 ? 'Com mais de um pacote, informe o valor total manualmente.' : (o.convidados.modo==='definido' ? `${q} adultos × ${moeda(pp)} = ${moeda(q*pp)}` : 'Defina a quantidade de adultos em “Convidados” pra calcular automaticamente.'); }
   c.querySelectorAll('.opc').forEach(l=>l.classList.toggle('on', l.querySelector('input').checked));
 }
 function textoZap(o){
@@ -697,7 +697,7 @@ function desenharCtr(){
   if(!k.pessoas && o.convidados && num(o.convidados.qtd)) k.pessoas=num(o.convidados.qtd);
   if(!k.data && o.dataEvento) k.data=o.dataEvento;
   if(!k.endereco && o.local) k.endereco=o.local;
-  if(o.tipo==='buffet' && o.valores.modo==='um' && !k._servAuto){ k.servico='Churrasco em domicílio ('+({sem:'sem bebidas',refri:'com bebidas não alcoólicas',alc:'com bebidas alcoólicas'}[o.valores.escolhido])+')'; k._servAuto=true; }
+  if(o.tipo==='buffet' && o.valores.modo==='um' && escolhidos(o).length===1 && !k._servAuto){ k.servico='Churrasco em domicílio ('+({sem:'sem bebidas',refri:'com bebidas não alcoólicas',alc:'com bebidas alcoólicas'}[escolhidos(o)[0]])+')'; k._servAuto=true; }
   c.innerHTML=`
   <div class="aviso">Cliente, data, local, quantidade e valor vêm do orçamento — confira e complete o que faltar.</div>
   <details class="sec" open><summary>👤 Contratante</summary><div class="corpo">
@@ -800,7 +800,7 @@ function valoresBuffet(o){
   };
   let lis=[], temNota=false;
   if(v.modo==='todos'){ ['sem','refri','alc'].forEach((id,i)=>{ const r=li(id, i<2?';':'.', true); lis.push(r.html); temNota=temNota||r.nota; }); }
-  else { const r=li(v.escolhido||'sem','.', !!v.mostrarPP); lis.push(r.html); temNota=r.nota; }
+  else { const e=['sem','refri','alc'].filter(id=>escolhidos(o).includes(id)); e.forEach((id,i)=>{ const r=li(id, i<e.length-1?';':'.', !!v.mostrarPP); lis.push(r.html); temNota=temNota||r.nota; }); }
   let html=`<p style="margin:0"><b>Valores:</b></p><ul>${lis.join('')}</ul>`;
   if(temNota) html+=`<p class="nota"><span class="d">*</span> ${NOTA_CERVEJA}.</p>`;
   if(v.modo==='um' && v.mostrarTotal && num(v.total)>0) html+=`<div class="tot">Valor total: ${moeda(v.total)} (${extenso(v.total)}).</div>`;
