@@ -199,6 +199,7 @@ label.opc,label.chk{text-transform:none;letter-spacing:0;color:var(--txt);font-w
   <div class="acoes" style="margin:0 0 12px">
     <button class="o" style="flex:1;padding:13px" id="btnNovoBuffet">+ Orçamento Buffet</button>
     <button class="p" style="flex:1;padding:13px" id="btnNovoMao">+ Orçamento Mão de Obra</button>
+    <button style="flex:1 1 100%;padding:13px;border:1px solid var(--ouro);background:#000;color:var(--ouro)" id="btnNovoCtr">📄 + Só o Contrato</button>
   </div>
   <input id="busca" placeholder="Buscar por cliente, local ou telefone…" style="margin-bottom:8px">
   <div class="filtros" id="filtros"></div>
@@ -210,7 +211,7 @@ label.opc,label.chk{text-transform:none;letter-spacing:0;color:var(--txt);font-w
   <div class="acoes" style="margin:0 0 10px;align-items:center">
     <button class="g sm" id="btnVoltar">← Lista</button>
     <div style="flex:1;font-weight:700" id="edTitulo"></div>
-    <span id="edBadge"></span>
+    <span id="edBadge"></span><span class="mudo" id="autosave" style="font-size:12px"></span>
   </div>
   <div class="abas">
     <button class="ativo" data-aba="orc">Orçamento</button>
@@ -291,11 +292,10 @@ const PACOTES_TXT = {
 const NOTA_CERVEJA = 'O valor por pessoa será definido a partir da marca de cerveja escolhida pelo cliente';
 
 const STATUS = [
-  ['rascunho','Rascunho'],['enviado','Orçamento enviado'],['contrato_enviado','Contrato enviado'],
-  ['confirmado','Confirmado'],['realizado','Evento realizado'],['cancelado','Cancelado']
+  ['rascunho','Rascunho'],['enviado','Orçamento enviado'],['confirmado','Confirmado'],['cancelado','Cancelado']
 ];
 // status antigos (versões anteriores) viram "Confirmado"
-const STATUS_ANTIGO = {aprovado:'confirmado', contrato_assinado:'confirmado', sinal_pago:'confirmado'};
+const STATUS_ANTIGO = {aprovado:'confirmado', contrato_assinado:'confirmado', sinal_pago:'confirmado', contrato_enviado:'confirmado', realizado:'confirmado'};
 const normStatus = s => STATUS_ANTIGO[s] || s || 'rascunho';
 const STATUS_NOME = Object.fromEntries(STATUS);
 
@@ -346,6 +346,7 @@ function modeloBuffet(){
   };
 }
 
+function modeloContratoAvulso(){ return {tipo:'contrato', cliente:'', telefone:'', dataEvento:'', local:'', pixDe:'saymon', convidados:{qtd:0}}; }
 function modeloMao(){
   return {
     tipo:'mao', cliente:'', telefone:'', dataEvento:'', local:'',
@@ -442,15 +443,17 @@ const DB = {
   async logout(){ if(usaSupa()) await supa.auth.signOut(); localStorage.removeItem('orc_user'); usuario=null; },
   async list(){ if(usaSupa()){ const {data,error}=await supa.from('orcamentos').select('id,cliente,telefone,tipo,data_evento,local,total,status,responsavel,atualizado_em').order('atualizado_em',{ascending:false}); if(error) throw error; return data.map(r=>({id:r.id,cliente:r.cliente,telefone:r.telefone,tipo:r.tipo,dataEvento:r.data_evento,local:r.local,total:r.total,status:normStatus(r.status),responsavel:r.responsavel,atualizado:r.atualizado_em})); } return locais().map(r=>resumo(r)).sort((a,b)=>(b.atualizado||'').localeCompare(a.atualizado||'')); },
   async get(id){ if(usaSupa()){ const {data,error}=await supa.from('orcamentos').select('*').eq('id',id).single(); if(error) throw error; return Object.assign(data.dados,{id:data.id,status:normStatus(data.status),historico:data.historico||[],criadoPor:data.criado_por,atualizado:data.atualizado_em}); } const r=locais().find(r=>r.id===id); if(r) r.status=normStatus(r.status); return r; },
-  async save(rec){ rec.atualizado=new Date().toISOString(); if(usaSupa()){ const {id,status,historico,criadoPor,atualizado,...dados}=rec; const linha={id, cliente:rec.orc.cliente, telefone:rec.orc.telefone, tipo:rec.orc.tipo, data_evento:rec.orc.dataEvento||null, local:rec.orc.local, total:totalDe(rec.orc), status, responsavel:rec.orc.pixDe, criado_por:criadoPor||usuario, atualizado_em:atualizado, historico, dados}; const {error}=await supa.from('orcamentos').upsert(linha); if(error) throw error; } else { const l=locais().filter(r=>r.id!==rec.id); l.push(rec); localStorage.setItem('orc_db',JSON.stringify(l)); } },
+  async save(rec){ sincronizarContrato(rec); rec.atualizado=new Date().toISOString(); if(usaSupa()){ const {id,status,historico,criadoPor,atualizado,...dados}=rec; const linha={id, cliente:rec.orc.cliente, telefone:rec.orc.telefone, tipo:rec.orc.tipo, data_evento:rec.orc.dataEvento||null, local:rec.orc.local, total:totalRec(rec), status, responsavel:rec.orc.pixDe, criado_por:criadoPor||usuario, atualizado_em:atualizado, historico, dados}; const {error}=await supa.from('orcamentos').upsert(linha); if(error) throw error; } else { const l=locais().filter(r=>r.id!==rec.id); l.push(rec); localStorage.setItem('orc_db',JSON.stringify(l)); } },
   async remove(id){ if(usaSupa()){ const {error}=await supa.from('orcamentos').delete().eq('id',id); if(error) throw error; } else { localStorage.setItem('orc_db',JSON.stringify(locais().filter(r=>r.id!==id))); } }
 };
 function locais(){ try{ return JSON.parse(localStorage.getItem('orc_db')||'[]'); }catch(e){ return []; } }
 function nomeDe(email){ return CONFIG.USUARIOS[email] || (email||'').split('@')[0]; }
-function resumo(r){ return {id:r.id,cliente:r.orc.cliente,telefone:r.orc.telefone,tipo:r.orc.tipo,dataEvento:r.orc.dataEvento,local:r.orc.local,total:totalDe(r.orc),status:normStatus(r.status),responsavel:r.orc.pixDe,atualizado:r.atualizado}; }
+function resumo(r){ sincronizarContrato(r); return {id:r.id,cliente:r.orc.cliente,telefone:r.orc.telefone,tipo:r.orc.tipo,dataEvento:r.orc.dataEvento,local:r.orc.local,total:totalRec(r),status:normStatus(r.status),responsavel:r.orc.pixDe,atualizado:r.atualizado}; }
+function totalRec(r){ if(r.orc && r.orc.tipo==='contrato') return num(r.ctr&&r.ctr.total); return totalDe(r.orc); }
+function sincronizarContrato(r){ if(r.orc && r.orc.tipo==='contrato' && r.ctr){ r.orc.cliente=r.ctr.contratante.nome||''; r.orc.dataEvento=r.ctr.data||''; r.orc.local=r.ctr.endereco||''; r.orc.pixDe=r.ctr.contratado||'saymon'; } }
 function totalDe(o){
   if(o.tipo==='mao') return num(o.valorBase)+(o.extras||[]).reduce((s,e)=>s+num(e.v),0);
-  const v=o.valores; if(v.modo==='um') return num(v.total)||0; return 0;
+  const v=o.valores; if(!v) return 0; if(v.modo==='um') return num(v.total)||0; return 0;
 }
 </script>
 
@@ -475,7 +478,7 @@ $('#lSenha').addEventListener('keydown',e=>{ if(e.key==='Enter') $('#btnEntrar')
 $('#btnEntrarLocal').onclick=()=>{ usuario=$('#lNome').value; localStorage.setItem('orc_user',usuario); entrou(); };
 $('#btnSair').onclick=async()=>{ await DB.logout(); $('#btnSair').classList.add('hidden'); $('#topoUser').textContent=''; mostrar('vLogin'); };
 
-const FILTROS=[['ativos','Em andamento'],['todos','Todos'],['enviado','Enviados'],['contrato_enviado','Contrato enviado'],['confirmado','Confirmados'],['realizado','Realizados'],['cancelado','Cancelados']];
+const FILTROS=[['ativos','Em andamento'],['todos','Todos'],['enviado','Enviados'],['confirmado','Confirmados'],['cancelado','Cancelados']];
 let cacheLista=[];
 async function carregarLista(){
   mostrar('vLista');
@@ -488,7 +491,7 @@ $('#busca').oninput=desenharLista;
 function desenharLista(){
   const q=$('#busca').value.toLowerCase();
   let l=cacheLista.filter(r=>{
-    if(filtro==='ativos') { if(['realizado','cancelado'].includes(r.status)) return false; }
+    if(filtro==='ativos') { if(r.status==='cancelado') return false; }
     else if(filtro!=='todos' && r.status!==filtro) return false;
     if(q && !((r.cliente||'')+' '+(r.local||'')+' '+(r.telefone||'')).toLowerCase().includes(q)) return false;
     return true;
@@ -496,7 +499,7 @@ function desenharLista(){
   if(!l.length){ $('#lista').innerHTML='<div class="card mudo" style="text-align:center">Nenhum orçamento aqui ainda. Toque em “+ Orçamento” pra começar.</div>'; return; }
   $('#lista').innerHTML=l.map(r=>`
     <div class="item" data-id="${r.id}">
-      <div class="ic">${r.tipo==='mao'?'👨‍🍳':'🍖'}</div>
+      <div class="ic">${r.tipo==='mao'?'👨‍🍳':r.tipo==='contrato'?'📄':'🍖'}</div>
       <div class="info">
         <div class="nome">${esc(r.cliente||'(sem nome)')}</div>
         <div class="sub">${r.dataEvento?dataBR(r.dataEvento)+' · ':''}${esc(r.local||'')}${r.responsavel?' · '+cap(r.responsavel):''}</div>
@@ -510,22 +513,24 @@ const cap=s=>s?s[0].toUpperCase()+s.slice(1):'';
 
 $('#btnNovoBuffet').onclick=()=>novo('buffet');
 $('#btnNovoMao').onclick=()=>novo('mao');
+$('#btnNovoCtr').onclick=()=>novo('contrato');
 function novo(tipo){
-  const orc = tipo==='mao'?modeloMao():modeloBuffet();
-  rec={id:uid(), status:'rascunho', historico:[{q:new Date().toISOString(),u:usuario,a:'Orçamento criado'}], criadoPor:usuario, orc, ctr:null};
-  abrirEditor();
+  const orc = tipo==='mao'?modeloMao():tipo==='contrato'?modeloContratoAvulso():modeloBuffet();
+  rec={id:uid(), status:'rascunho', historico:[{q:new Date().toISOString(),u:usuario,a:tipo==='contrato'?'Contrato criado':'Orçamento criado'}], criadoPor:usuario, orc, ctr:null};
+  if(tipo==='contrato') rec.ctr=modeloContrato(orc);
+  sujo=false; abrirEditor();
 }
-async function abrir(id){ try{ rec=await DB.get(id); if(!rec.ctr) rec.ctr=null; abrirEditor(); }catch(e){ toast('Erro: '+e.message); } }
+async function abrir(id){ try{ rec=await DB.get(id); if(!rec.ctr) rec.ctr=null; sujo=false; abrirEditor(); }catch(e){ toast('Erro: '+e.message); } }
 
 /* =====================================================================
    EDITOR
    ===================================================================== */
-$('#btnVoltar').onclick=()=>carregarLista();
+$('#btnVoltar').onclick=async()=>{ await salvarSeMudou(); carregarLista(); };
 $$('.abas button').forEach(b=>b.onclick=()=>irAba(b.dataset.aba));
-function irAba(a){ aba=a; $$('.abas button').forEach(b=>b.classList.toggle('ativo',b.dataset.aba===a)); ['orc','ctr','st'].forEach(k=>$('#aba'+cap(k)).classList.toggle('hidden',k!==a)); if(a==='ctr') desenharCtr(); if(a==='st') desenharSt();
+function irAba(a){ if(rec.orc.tipo==='contrato' && a==='orc') a='ctr'; aba=a; $$('.abas button').forEach(b=>b.classList.toggle('ativo',b.dataset.aba===a)); ['orc','ctr','st'].forEach(k=>$('#aba'+cap(k)).classList.toggle('hidden',k!==a)); if(a==='ctr') desenharCtr(); if(a==='st') desenharSt();
   const docs=a!=='st'; $('#btnVer').disabled=!docs; $('#btnPdf').disabled=!docs; $('#btnPdf').textContent=a==='ctr'?'PDF Contrato':'PDF / Enviar'; }
-function abrirEditor(){ mostrar('vEditor'); atualizarCab(); desenharOrc(); irAba('orc'); }
-function atualizarCab(){ $('#edTitulo').textContent=(rec.orc.tipo==='mao'?'Mão de Obra — ':'Buffet — ')+(rec.orc.cliente||'novo'); $('#edBadge').innerHTML=`<span class="badge b-${rec.status}">${STATUS_NOME[rec.status]}</span>`; }
+function abrirEditor(){ mostrar('vEditor'); atualizarCab(); const soCtr=rec.orc.tipo==='contrato'; $('.abas button[data-aba=orc]').classList.toggle('hidden',soCtr); if(!soCtr) desenharOrc(); else $('#abaOrc').innerHTML=''; irAba(soCtr?'ctr':'orc'); $('#autosave').textContent=''; }
+function atualizarCab(){ $('#edTitulo').textContent=(rec.orc.tipo==='mao'?'Mão de Obra — ':rec.orc.tipo==='contrato'?'Contrato — ':'Buffet — ')+(rec.orc.cliente||'novo'); $('#edBadge').innerHTML=`<span class="badge b-${rec.status}">${STATUS_NOME[rec.status]}</span>`; }
 
 /* binding simples: data-b="caminho.no.objeto" */
 function getP(obj,p){ return p.split('.').reduce((o,k)=>o==null?undefined:o[k],obj); }
@@ -707,7 +712,7 @@ function desenharCtr(){
   if(!k.endereco && o.local) k.endereco=o.local;
   if(o.tipo==='buffet' && o.valores.modo==='um' && escolhidos(o).length===1 && !k._servAuto){ k.servico='Churrasco em domicílio ('+({sem:'sem bebidas',refri:'com bebidas não alcoólicas',alc:'com bebidas alcoólicas'}[escolhidos(o)[0]])+')'; k._servAuto=true; }
   c.innerHTML=`
-  <div class="aviso">Cliente, data, local, quantidade e valor vêm do orçamento — confira e complete o que faltar.</div>
+  ${o.tipo==='contrato'?'':'<div class="aviso">Cliente, data, local, quantidade e valor vêm do orçamento — confira e complete o que faltar.</div>'}
   <details class="sec" open><summary>👤 Contratante</summary><div class="corpo">
     ${campo('Nome completo','data-b="contratante.nome"')}
     <div class="row"><div>${campo('CPF','data-b="contratante.cpf" inputmode="numeric" placeholder="000.000.000-00"')}</div><div>${campo('Endereço','data-b="contratante.endereco"')}</div></div>
@@ -734,7 +739,7 @@ function desenharCtr(){
     <label>Encerramento</label><textarea data-b="textos.final"></textarea>
     ${campo('Data do contrato','type="date" data-b="dataContrato"')}
   </div></details>`;
-  ligar(c,k,(p)=>{ if(p==='total'||p==='adiantamentoAuto'||p==='adiantamento') adiantamento(); if(p==='data') diaSemana(c,'#inDataC','#diaSemanaC'); });
+  ligar(c,k,(p)=>{ if(p==='total'||p==='adiantamentoAuto'||p==='adiantamento') adiantamento(); if(p==='data') diaSemana(c,'#inDataC','#diaSemanaC'); if(p==='contratante.nome'){ sincronizarContrato(rec); atualizarCab(); } });
   diaSemana(c,'#inDataC','#diaSemanaC');
   c.querySelectorAll('[data-ext]').forEach(b=>b.onclick=()=>{ const t=b.dataset.ext; k.extras.push(t==='garcom'?{tipo:t,qtd:1,desc:'',v:0}:t==='aluguel'?{tipo:t,qtd:1,desc:'',v:0}:{tipo:'livre',t:''}); desenharCtr(); });
   c.querySelectorAll('[data-rmx]').forEach(b=>b.onclick=()=>{ k.extras.splice(+b.dataset.rmx,1); desenharCtr(); });
@@ -774,11 +779,22 @@ function desenharSt(){
   c.querySelector('#btnExcluir').onclick=async()=>{ if(!confirm('Excluir este orçamento de vez?')) return; await DB.remove(rec.id); toast('Excluído'); carregarLista(); };
 }
 
-/* ---------- SALVAR ---------- */
+/* ---------- SALVAR (automático) ---------- */
+let sujo=false, timerSalvar=null, salvando=false;
 async function salvar(silencioso){
-  try{ await DB.save(rec); if(!silencioso) toast('Salvo ✓'); atualizarCab(); }catch(e){ toast('Erro ao salvar: '+e.message); }
+  if(salvando) { sujo=true; return; }
+  salvando=true; const ind=$('#autosave'); if(ind) ind.textContent='salvando…';
+  try{ sujo=false; await DB.save(rec); if(!silencioso) toast('Salvo ✓'); if(ind) ind.textContent='salvo ✓'; atualizarCab(); }
+  catch(e){ sujo=true; if(ind) ind.textContent='não salvo!'; toast('Erro ao salvar: '+e.message); }
+  salvando=false; if(sujo) agendarSalvar();
 }
-$('#btnSalvar').onclick=()=>salvar();
+function agendarSalvar(){ sujo=true; const ind=$('#autosave'); if(ind) ind.textContent='…'; clearTimeout(timerSalvar); timerSalvar=setTimeout(()=>salvar(true),1200); }
+async function salvarSeMudou(){ clearTimeout(timerSalvar); if(sujo) await salvar(true); }
+// qualquer digitação, seleção ou clique em botão de lista dentro do editor agenda o salvamento
+['input','change'].forEach(ev=>$('#vEditor').addEventListener(ev,e=>{ if(e.target.closest('#abaOrc,#abaCtr')) agendarSalvar(); }));
+$('#vEditor').addEventListener('click',e=>{ const b=e.target.closest('button'); if(b && b.closest('#abaOrc,#abaCtr') && !b.id.startsWith('btnCopiar')) agendarSalvar(); });
+document.addEventListener('visibilitychange',()=>{ if(document.hidden && rec && !$('#vEditor').classList.contains('hidden')) salvarSeMudou(); });
+$('#btnSalvar').onclick=()=>{ clearTimeout(timerSalvar); salvar(); };
 </script>
 
 <script>
@@ -869,7 +885,7 @@ function paginasContrato(k){
 
 function paginasAtuais(){
   if(aba==='ctr'){ if(!rec.ctr) rec.ctr=modeloContrato(rec.orc); return {titulo:'Contrato', pags:paginasContrato(rec.ctr), nome:`Contrato - ${semAcento(rec.orc.cliente)||'cliente'}.pdf`}; }
-  const o=rec.orc; return {titulo: o.tipo==='mao'?'Orçamento Mão de Obra':'Orçamento Buffet', pags: o.tipo==='mao'?paginasMao(o):paginasBuffet(o), nome:`Proposta - ${semAcento(o.cliente)||'cliente'}.pdf`};
+  const o=rec.orc; if(o.tipo==='contrato') { aba='ctr'; return paginasAtuais(); } return {titulo: o.tipo==='mao'?'Orçamento Mão de Obra':'Orçamento Buffet', pags: o.tipo==='mao'?paginasMao(o):paginasBuffet(o), nome:`Proposta - ${semAcento(o.cliente)||'cliente'}.pdf`};
 }
 /* encaixa o conteúdo na página (reduz um pouco se passar) */
 function ajustar(container){
@@ -887,6 +903,7 @@ async function montar(container){
 /* ---------- PREVIEW ---------- */
 $('#btnVer').onclick=verPreview; $('#btnFecharPrev').onclick=()=>$('#vPrev').classList.add('hidden'); $('#btnPrevPdf').onclick=gerarPdf;
 async function verPreview(){
+  await salvarSeMudou();
   const box=$('#prevPags'); const s=Math.min(1,(window.innerWidth-28)/794);
   $('#vPrev').classList.remove('hidden');
   const tmp=document.createElement('div'); const d=await montar(tmp); $('#prevTit').textContent=d.titulo;
@@ -898,7 +915,7 @@ $('#btnPdf').onclick=gerarPdf;
 async function gerarPdf(){
   const btn=$('#btnPdf'); btn.disabled=true; btn.textContent='Gerando…';
   try{
-    await salvar(true);
+    clearTimeout(timerSalvar); await salvar(true);
     const r=$('#render'); const d=await montar(r);
     const {jsPDF}=window.jspdf; const pdf=new jsPDF({unit:'mm',format:'a4',compress:true});
     const pgs=Array.from(r.querySelectorAll('.pg'));
@@ -916,7 +933,7 @@ async function gerarPdf(){
     } else baixar(blob,d.nome);
     const acao=(aba==='ctr'?'Contrato':'Orçamento')+' gerado em PDF'; rec.historico.push({q:new Date().toISOString(),u:usuario,a:acao});
     if(aba==='orc' && rec.status==='rascunho'){ rec.status='enviado'; rec.historico.push({q:new Date().toISOString(),u:usuario,a:'Status: Orçamento enviado'}); }
-    if(aba==='ctr' && ['enviado','rascunho'].includes(rec.status)){ rec.status='contrato_enviado'; rec.historico.push({q:new Date().toISOString(),u:usuario,a:'Status: Contrato enviado'}); }
+    if(aba==='ctr' && ['enviado','rascunho'].includes(rec.status)){ rec.status='confirmado'; rec.historico.push({q:new Date().toISOString(),u:usuario,a:'Status: Confirmado'}); }
     await salvar(true);
   }catch(e){ console.error(e); toast('Erro ao gerar PDF: '+e.message); }
   btn.disabled=false; btn.textContent=aba==='ctr'?'PDF Contrato':'PDF / Enviar';
