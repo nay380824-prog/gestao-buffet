@@ -23,6 +23,7 @@
   --placa:#1a1915;--placa2:#262420;--linha:#35322b;--texto:#f4f0e6;--mudo:#a7a192;
 }
 *{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 html,body{margin:0;background:#000;color:var(--texto);font-family:'Red Hat Display',system-ui,-apple-system,sans-serif;-webkit-tap-highlight-color:transparent}
 button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0}
 button:disabled{opacity:.55;cursor:default}
@@ -225,6 +226,9 @@ textarea.pronta{border-color:var(--ouro);background:#1c1a12;font-size:17px;line-
 .pg.ctr .assin b{display:block}
 .pg.orc .tots{margin:14px 0 22px}
 .pg.orc .tots .tot{margin:0 0 6px;font-size:18px}
+/* celulares Android aumentam sozinhos a letra de blocos largos de texto (“font boosting”);
+   isso bagunçava as páginas do PDF. Estas regras desligam esse aumento só nas páginas. */
+.pg,.pg *{-webkit-text-size-adjust:none!important;text-size-adjust:none!important;max-height:1000000px}
 </style>
 </head>
 <body>
@@ -1204,7 +1208,8 @@ async function gerarPdf(btn){
     const {jsPDF}=window.jspdf; const pdf=new jsPDF({unit:'mm',format:'a4',compress:true});
     const pgs=Array.from(r.querySelectorAll('.pg'));
     for(let i=0;i<pgs.length;i++){
-      const cv=await html2canvas(pgs[i],{scale:2,useCORS:true,backgroundColor:null,logging:false,width:794,height:1123,windowWidth:794});
+      const cv=await html2canvas(pgs[i],{scale:2,useCORS:true,backgroundColor:null,logging:false,width:794,height:1123,windowWidth:794,
+        onclone:cd=>{ const rr=cd.getElementById('render'); if(rr) ajustar(rr); }});   // confere o encaixe de novo na cópia usada pra “fotografar” a página
       if(i>0) pdf.addPage();
       pdf.addImage(cv.toDataURL('image/jpeg',0.92),'JPEG',0,0,210,297);
       const pr=pgs[i].getBoundingClientRect(), k=210/794;
