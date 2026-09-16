@@ -173,6 +173,8 @@ h1{font-size:30px;line-height:1.12;font-weight:700;margin:0 0 8px;letter-spacing
 .campo textarea{font-size:16px;line-height:1.45}
 textarea.dourado{color:var(--ouro2);border-left:6px solid var(--ouro)}
 .erro{color:#ff9d8f;font-size:16px;min-height:22px;margin:10px 0 0}
+.total-pac{border-top:1px dashed var(--linha);margin-top:16px;padding-top:12px}
+.total-pac .campo{margin:0}
 
 /* ===== DOCUMENTOS (A4 = 794 x 1123 px) ===== */
 .pg{width:794px;height:1123px;position:relative;overflow:hidden;font-family:'Red Hat Display',sans-serif;color:#fff;background:#000}
@@ -218,6 +220,8 @@ textarea.dourado{color:var(--ouro2);border-left:6px solid var(--ouro)}
 .pg.ctr .data{text-align:center;margin:24px 0 46px}
 .pg.ctr .assin{text-align:center;margin-top:40px;line-height:1.5}
 .pg.ctr .assin b{display:block}
+.pg.orc .tots{margin:14px 0 22px}
+.pg.orc .tots .tot{margin:0 0 6px;font-size:18px}
 </style>
 </head>
 <body>
@@ -443,7 +447,13 @@ function valoresBuffet(o){
   else { const e=['sem','refri','alc'].filter(id=>escolhidos(o).includes(id)); e.forEach((id,i)=>{ const r=li(id, i<e.length-1?';':'.', !!v.mostrarPP); lis.push(r.html); temNota=temNota||r.nota; }); }
   let html=`<p style="margin:0"><b>Valores:</b></p><ul>${lis.join('')}</ul>`;
   if(temNota) html+=`<p class="nota"><span class="d">*</span> ${NOTA_CERVEJA}.</p>`;
-  if(v.modo==='um' && v.mostrarTotal && num(v.total)>0) html+=`<div class="tot">Valor total: ${moeda(v.total)} (${extenso(v.total)}).</div>`;
+  if(v.modo==='um' && v.mostrarTotal){
+    const e=['sem','refri','alc'].filter(id=>escolhidos(o).includes(id));
+    const tot=id=> v.totais ? num(v.totais[id]) : (e.length===1 ? num(v.total) : 0);
+    const NOME={sem:'sem bebidas', refri:'com refrigerantes', alc:'com bebida alcoólica'};
+    if(e.length===1){ if(tot(e[0])>0) html+=`<div class="tot">Valor total: ${moeda(tot(e[0]))} (${extenso(tot(e[0]))}).</div>`; }
+    else { const l=e.filter(id=>tot(id)>0); if(l.length) html+=`<div class="tots">${l.map(id=>`<div class="tot">Valor total ${NOME[id]}: ${moeda(tot(id))} (${extenso(tot(id))}).</div>`).join('')}</div>`; }
+  }
   return html;
 }
 function secaoHtml(s){
@@ -589,9 +599,17 @@ function totalDe(o){
   const v=o.valores; if(!v) return 0; if(v.modo==='um') return num(v.total)||0; return 0;
 }
 function qtdDefinida(o){ return o.convidados.modo==='definido'?num(o.convidados.qtd):0; }
+/* no modo "só o que o cliente pediu", cada opção marcada tem o seu próprio valor total */
+function prepTotais(o){
+  const v=o.valores;
+  if(!v.totais){ v.totais={}; v.totaisManual={}; const e=escolhidos(o); if(e.length===1 && num(v.total)){ v.totais[e[0]]=num(v.total); if(v.totalManual) v.totaisManual[e[0]]=true; } }
+  v.totaisManual=v.totaisManual||{};
+}
 function autoTotal(o){
-  if(o.tipo!=='buffet') return; const v=o.valores; if(v.modo!=='um'||v.totalManual) return;
-  const q=qtdDefinida(o), pp=ppEscolhido(o); v.total = (q&&pp) ? Math.round(q*pp*100)/100 : 0;
+  if(o.tipo!=='buffet') return; const v=o.valores; if(v.modo!=='um') return;
+  prepTotais(o); const e=escolhidos(o), q=qtdDefinida(o);
+  e.forEach(id=>{ if(v.totaisManual[id]) return; const pp=num((v.pacotes.find(p=>p.id===id)||{}).v); v.totais[id]=(q&&pp)?Math.round(q*pp*100)/100:0; });
+  v.total = e.length===1 ? num(v.totais[e[0]]) : 0;
 }
 function descPadrao(o,id){ const m=(o.valores.marcaCerveja||'').trim(); return PACOTES_TXT[id].replace('{cerveja}', m?' '+m:''); }
 function nomePac(id){ return {sem:'Sem bebidas',refri:'Refrigerante e suco',alc:'Cerveja e caipirosca'}[id]; }
@@ -655,36 +673,38 @@ const PASSOS={
             ? `${campoArea('O que vai escrito no orçamento',`valores.descricoes.${id}`)}${id==='alc'?'<p class="dica" style="margin:-8px 0 6px">Confira se a marca da cerveja está escrita no texto.</p>':''}<button type="button" class="link" data-padrao="${id}">Voltar ao texto de sempre</button>`
             : `<p class="desc-pac" data-desc-de="${id}">${esc(descPadrao(o,id))}</p><button type="button" class="link" data-desc="${id}">Mudar esse texto</button>`}
           <div class="dinheiro"><span>R$</span><input inputmode="decimal" data-b="valores.pacotes.${i}.v" data-n placeholder="0,00" aria-label="Valor por pessoa, ${t}"><em>por pessoa</em></div>
-          ${id==='alc'?`${campo('Marca da cerveja','valores.marcaCerveja','Ex.: Heineken')}<p class="dica">Sem a marca, o preço desta opção não aparece. No lugar vai uma nota dizendo que o valor depende da cerveja escolhida.</p>`:''}
+          ${id==='alc'?`${campo('Marca da cerveja','valores.marcaCerveja','Ex.: Heineken')}<p class="dica">Sem a marca, o preço por pessoa desta opção não aparece. No lugar vai uma nota dizendo que o valor depende da cerveja escolhida.</p>`:''}
+          ${v.modo==='um'?`<div class="total-pac"><p class="conta-tot" data-conta="${id}"></p>${campoDin(ids.length>1?`Valor total ${nomePac(id).toLowerCase()}`:'Valor total',`valores.totais.${id}`)}</div>`:''}
         </div>`; }).join('');
       if(v.modo==='um'){
-        h+=`<div class="totalbox"><p class="conta-tot" id="contaTot"></p>${campoDin('Valor total','valores.total')}
-          <button type="button" class="chk ${v.mostrarPP?'on':''}" id="chkPP">Mostrar também o valor por pessoa no orçamento</button></div>`;
+        h+=`${ids.length>1?'<p class="dica" style="margin:0 0 8px">Cada opção sai com o seu valor total no orçamento. Deixe em branco o que não quiser mostrar.</p>':''}
+          <button type="button" class="chk ${v.mostrarPP?'on':''}" id="chkPP">Mostrar também o valor por pessoa no orçamento</button>`;
       }
       return h; },
     montar:el=>{ const o=doc.orc, v=o.valores;
       const conta=(p,inp)=>{
         if(p==='valores.marcaCerveja'){ const d=el.querySelector('[data-desc-de=alc]'); if(d) d.textContent=descPadrao(o,'alc'); }
         if(v.modo!=='um') return;
-        if(p==='valores.total') v.totalManual = inp.value.trim()!=='';
-        const antes=v.total; autoTotal(o);
-        const tot=el.querySelector('[data-b="valores.total"]'); if(!v.totalManual && p!=='valores.total' && antes!==v.total) tot.value=fmtIn(v.total);
-        const q=qtdDefinida(o), pp=ppEscolhido(o), e=escolhidos(o), box=el.querySelector('#contaTot');
-        if(e.length>1) box.textContent='Com mais de uma opção, digite o total se quiser que ele apareça.';
-        else if(!q) box.textContent='Sem a quantidade de adultos não dá pra calcular. Digite o total se quiser que ele apareça.';
-        else if(pp) box.textContent=`${q} adultos × ${moeda(pp)} = ${moeda(q*pp)}`+(v.totalManual&&Math.abs(num(v.total)-q*pp)>0.001?' (você mudou o total)':'');
-        else box.textContent='';
+        const m=/^valores\.totais\.(\w+)$/.exec(p||''); if(m) v.totaisManual[m[1]] = inp.value.trim()!=='';
+        autoTotal(o); const q=qtdDefinida(o);
+        escolhidos(o).forEach(id=>{
+          const inT=el.querySelector(`[data-b="valores.totais.${id}"]`); if(inT && !v.totaisManual[id] && !(m&&m[1]===id)) inT.value=fmtIn(v.totais[id]);
+          const box=el.querySelector(`[data-conta="${id}"]`); if(!box) return; const pp=num((v.pacotes.find(x=>x.id===id)||{}).v);
+          box.textContent = !q ? 'Sem a quantidade de adultos não dá pra calcular. Digite o total se quiser que ele apareça.'
+            : pp ? `${q} adultos × ${moeda(pp)} = ${moeda(q*pp)}`+(v.totaisManual[id]&&Math.abs(num(v.totais[id])-q*pp)>0.001?' (você mudou o total)':'') : '';
+        });
       };
-      ligar(el,o,conta); conta('');
-      const tot=el.querySelector('[data-b="valores.total"]'); if(tot) tot.value=fmtIn(v.total);
+      autoTotal(o); ligar(el,o,conta); conta('');
       const c=el.querySelector('#chkPP'); if(c) c.onclick=()=>{ v.mostrarPP=!v.mostrarPP; c.classList.toggle('on',v.mostrarPP); };
       el.querySelectorAll('[data-desc]').forEach(b=>b.onclick=()=>{ const id=b.dataset.desc; v.descricoes[id]=descPadrao(o,id); redesenhar('valores'); const t=document.querySelector(`[data-b="valores.descricoes.${id}"]`); if(t){ t.focus(); t.setSelectionRange(t.value.length,t.value.length); } });
       el.querySelectorAll('[data-padrao]').forEach(b=>b.onclick=()=>{ delete v.descricoes[b.dataset.padrao]; redesenhar('valores'); });
     },
     resumo:()=>{ const o=doc.orc, v=o.valores; autoTotal(o); const ids=v.modo==='todos'?['sem','refri','alc']:escolhidos(o);
-      const p=ids.map(id=>{ const pc=v.pacotes.find(x=>x.id===id); if(id==='alc'&&!(v.marcaCerveja||'').trim()) return 'Cerveja conforme a marca'; return `${nomePac(id)} ${num(pc.v)?moeda(pc.v):'sem valor'}`; });
-      if(v.modo==='um'&&num(v.total)) p.push('total '+moeda(v.total));
-      return p.join(', '); }
+      const p=ids.map(id=>{ const pc=v.pacotes.find(x=>x.id===id);
+        let s = (id==='alc'&&!(v.marcaCerveja||'').trim()) ? 'Cerveja conforme a marca' : `${nomePac(id)} ${num(pc.v)?moeda(pc.v):'sem valor'}`;
+        if(v.modo==='um' && v.totais && num(v.totais[id])) s+=` (total ${moeda(v.totais[id])})`;
+        return s; });
+      return p.join('; '); }
   },
 
   cardapio:{
