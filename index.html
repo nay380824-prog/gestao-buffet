@@ -175,6 +175,9 @@ textarea.dourado{color:var(--ouro2);border-left:6px solid var(--ouro)}
 .erro{color:#ff9d8f;font-size:16px;min-height:22px;margin:10px 0 0}
 .total-pac{border-top:1px dashed var(--linha);margin-top:16px;padding-top:12px}
 .total-pac .campo{margin:0}
+.aviso-ia{border:2px solid var(--amarelo);background:#23210a;border-radius:14px;padding:12px 14px;margin:0 0 12px;font-size:16px;line-height:1.4;color:#f1ecc0}
+.aviso-ia b{display:block;color:var(--amarelo);margin-bottom:4px}
+textarea.pronta{border-color:var(--ouro);background:#1c1a12;font-size:17px;line-height:1.5}
 
 /* ===== DOCUMENTOS (A4 = 794 x 1123 px) ===== */
 .pg{width:794px;height:1123px;position:relative;overflow:hidden;font-family:'Red Hat Display',sans-serif;color:#fff;background:#000}
@@ -242,6 +245,8 @@ const CONFIG = {
     'mayronnataniel6875@gmail.com': 'Mayron',
     'naysouzam@gmail.com': 'Nayara',
   },
+  // Nome da função do Supabase que ajeita as mensagens com IA
+  IA_FUNCAO: 'ajeitar-mensagem',
   // Quem vê na tela inicial o que TODO MUNDO fez (os outros veem só os próprios)
   ADMINS: ['Nayara'],
   TELEFONES: '(61) 98265-5292\n(61) 98108-9458',
@@ -929,10 +934,11 @@ function telaInicio(){
       ${tile('buffet','🍖','Orçamento de buffet','Cardápio completo, com ou sem bebidas','',true)}
       ${tile('mao','🔥','Orçamento só do churrasqueiro','O cliente compra as carnes e os acompanhamentos','',true)}
       ${tile('contrato','✍️','Contrato','Pro cliente que já fechou','',true)}
+      ${tile('msg','💬','Ajeitar mensagem pro cliente','Você diz o que quer responder e o app deixa no capricho','',true)}
       <div id="ultimos"></div>
       <button type="button" class="trocar" id="bTrocar">Não é ${esc(usuario)}? Trocar</button>
     </main></div>`;
-  app().querySelectorAll('.tile').forEach(b=>b.onclick=()=>novo(b.dataset.v));
+  app().querySelectorAll('.tile').forEach(b=>b.onclick=()=>b.dataset.v==='msg'?telaMensagem():novo(b.dataset.v));
   app().querySelector('#bTrocar').onclick=async()=>{ if(!confirm('Sair e trocar de pessoa neste celular?')) return; try{ if(supa) await supa.auth.signOut(); }catch(e){} usuario=null; LS.set('cb_usuario',null); telaQuem(); };
   desenharUltimos(LS.get('cb_recentes',[]));
   window.scrollTo(0,0);
@@ -950,6 +956,65 @@ function desenharUltimos(rec){
     ${rec.map((r,i)=>`<div class="rec"><button type="button" class="rec-abre" data-i="${i}"><span class="emo" aria-hidden="true">${TIPO_EMO[r.tipo]||'📄'}</span><span style="min-width:0"><b>${esc(r.orc.cliente||'Sem nome')}</b><small>${TIPO_NOME[r.tipo]||''}${r.orc.dataEvento?', evento '+dataBR(r.orc.dataEvento):''}${ehAdmin()&&r.criadoPor&&r.criadoPor!==usuario?', feito por '+esc(r.criadoPor):''}</small></span></button></div>`).join('')}`:'')
     +(pend&&supa?`<p class="dica" style="margin-top:14px">${pend===1?'1 ainda não foi':pend+' ainda não foram'} pro sistema. O app tenta de novo sozinho quando tiver internet.</p>`:'');
   box.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{ doc=JSON.parse(JSON.stringify(rec[+b.dataset.i])); doc.pronto=true; telaPronto(true); });
+}
+
+/* =====================================================================
+   AJEITAR MENSAGEM (IA)
+   ===================================================================== */
+let msg=LS.get('cb_msg',{cliente:'',rascunho:'',mensagem:'',aviso:'',mudou:false});
+function guardarMsg(){ LS.set('cb_msg',msg); }
+function telaMensagem(){
+  doc=null; extra=null;
+  const tem=!!msg.mensagem, precisaAjeitar=!tem||msg.mudou;
+  app().innerHTML=`<div class="tela">
+    <header class="barra"><button type="button" class="voltar" id="bVoltar">‹ Voltar</button>${(msg.rascunho||msg.cliente)?'<button type="button" class="voltar" id="bLimpar">Começar outra</button>':''}</header>
+    <main class="conteudo">
+      <h1>Ajeitar mensagem</h1>
+      <p class="subt">Escreva do seu jeito o que você quer responder. O app arruma o português e o tom, sem mudar o que você disse.</p>
+      <label class="campo"><span>O que o cliente mandou (se quiser)</span><textarea id="mCliente" rows="3" placeholder="Cole aqui a mensagem do cliente"></textarea></label>
+      <label class="campo"><span>O que você quer responder</span><textarea id="mRascunho" rows="4" placeholder="Ex.: faz sim, tem a data, com refri fica 90 por pessoa"></textarea></label>
+      <p class="dica" style="margin:-10px 0 0">Não quer digitar? Toque no microfone do teclado e fale.</p>
+      <p class="erro" id="mErro" role="alert"></p>
+      <div id="mResultado">${tem?`
+        <h2 class="h2">Pronta pra mandar</h2>
+        ${msg.mudou?'<p class="dica" style="margin:-4px 0 10px">Você mudou o que escreveu. Toque em “Ajeitar a mensagem” pra atualizar.</p>':''}
+        ${msg.aviso?`<div class="aviso-ia"><b>Atenção</b>${esc(msg.aviso)}</div>`:''}
+        <textarea id="mPronta" class="pronta" rows="6" aria-label="Mensagem pronta"></textarea>
+        <p class="dica" style="margin:6px 0 12px">Pode mexer no texto aqui mesmo antes de copiar.</p>
+        <div class="atalhos"><button type="button" class="chip" data-aj="curta">Mais curta</button><button type="button" class="chip" data-aj="formal">Mais formal</button></div>`:''}
+      </div>
+    </main>
+    <footer class="rodape"><button type="button" class="cta" id="bMsg">${precisaAjeitar?'Ajeitar a mensagem':'Copiar a mensagem'}</button></footer>
+  </div>`;
+  const $c=document.getElementById('mCliente'), $r=document.getElementById('mRascunho'), $p=document.getElementById('mPronta'), bt=document.getElementById('bMsg'), er=document.getElementById('mErro');
+  $c.value=msg.cliente; $r.value=msg.rascunho; if($p) $p.value=msg.mensagem;
+  [$c,$r,$p].forEach(t=>{ if(!t) return; requestAnimationFrame(()=>crescer(t)); t.addEventListener('input',()=>crescer(t)); });
+  const marcarMudou=()=>{ if(msg.mensagem && !msg.mudou){ msg.mudou=true; bt.textContent='Ajeitar a mensagem'; } };
+  $c.addEventListener('input',()=>{ msg.cliente=$c.value; marcarMudou(); guardarMsg(); er.textContent=''; });
+  $r.addEventListener('input',()=>{ msg.rascunho=$r.value; marcarMudou(); guardarMsg(); er.textContent=''; });
+  if($p) $p.addEventListener('input',()=>{ msg.mensagem=$p.value; guardarMsg(); });
+  document.getElementById('bVoltar').onclick=telaInicio;
+  const lp=document.getElementById('bLimpar'); if(lp) lp.onclick=()=>{ msg={cliente:'',rascunho:'',mensagem:'',aviso:'',mudou:false}; guardarMsg(); telaMensagem(); document.getElementById('mCliente').focus(); };
+  bt.onclick=()=>{ if(bt.textContent==='Copiar a mensagem') return copiar(msg.mensagem); pedirIA(null,bt); };
+  document.querySelectorAll('[data-aj]').forEach(b=>b.onclick=()=>pedirIA(b.dataset.aj,b));
+}
+async function pedirIA(ajuste,botao){
+  const er=document.getElementById('mErro');
+  if(!msg.rascunho.trim()){ er.textContent='Escreva o que você quer responder.'; document.getElementById('mRascunho').focus(); return; }
+  if(!supa){ er.textContent='Pra ajeitar a mensagem o celular precisa estar com internet. Feche e abra o app de novo.'; return; }
+  const txt=botao.textContent; document.querySelectorAll('#bMsg,[data-aj]').forEach(b=>b.disabled=true); botao.textContent='Ajeitando…'; er.textContent='';
+  try{
+    const {data,error}=await supa.functions.invoke(CONFIG.IA_FUNCAO,{body:{cliente:msg.cliente, rascunho:msg.rascunho, ajuste, anterior:ajuste?msg.mensagem:''}});
+    if(error){ let m=''; try{ m=(await error.context.json()).erro; }catch(e){} throw new Error(m||'falhou'); }
+    if(!data||!data.mensagem) throw new Error(data&&data.erro||'falhou');
+    msg.mensagem=data.mensagem; msg.aviso=data.aviso||''; msg.mudou=false; guardarMsg();
+    telaMensagem();
+    const res=document.getElementById('mResultado'); if(res) res.scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(e){
+    console.warn(e);
+    er.textContent = (e.message && e.message!=='falhou') ? e.message : 'Não deu pra ajeitar agora. Confira a internet e tente de novo.';
+    document.querySelectorAll('#bMsg,[data-aj]').forEach(b=>b.disabled=false); botao.textContent=txt;
+  }
 }
 
 function novo(tipo){
