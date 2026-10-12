@@ -96,6 +96,14 @@ h1{font-size:30px;line-height:1.12;font-weight:700;margin:0 0 8px;letter-spacing
 .stepper button:active{background:#34312a}
 .stepper input{flex:1;text-align:center;font-size:46px;font-weight:700;min-height:84px;padding:6px;min-width:0}
 .atalhos{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 22px}
+.cri{display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--linha);padding:10px 0}
+.cri:last-of-type{border-bottom:0}
+.cri-t{flex:1;min-width:0;font-size:17px;line-height:1.2}
+.cri-t small{display:block;color:var(--mudo);font-size:14px;margin-top:3px}
+.mini{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.mini button{width:52px;min-height:52px;border-radius:14px;background:var(--placa2);font-size:28px;font-weight:600;color:var(--ouro)}
+.mini button:active{background:#34312a}
+.mini input{width:64px;text-align:center;font-size:24px;font-weight:700;min-height:52px;padding:4px;min-width:0}
 .chip{min-height:46px;padding:0 16px;border-radius:99px;background:var(--placa);border:2px solid var(--linha);font-size:16px;font-weight:600}
 .chip:active{border-color:var(--ouro)}
 .apagado{opacity:.4}
@@ -224,6 +232,7 @@ textarea.pronta{border-color:var(--ouro);background:#1c1a12;font-size:17px;line-
 .pg.ctr .data{text-align:center;margin:24px 0 46px}
 .pg.ctr .assin{text-align:center;margin-top:40px;line-height:1.5}
 .pg.ctr .assin b{display:block}
+.pg.orc .notacri{font-style:italic;font-size:13.5px;color:var(--ouro);margin:-12px 0 20px}
 .pg.orc .tots{margin:14px 0 22px}
 .pg.orc .tots .tot{margin:0 0 6px;font-size:18px}
 /* celulares Android aumentam sozinhos a letra de blocos largos de texto (“font boosting”);
@@ -258,6 +267,14 @@ const CONFIG = {
   SITE_URL: 'https://churrascoembrasilia.com.br',
   VALIDADE_DIAS: 20,
   MINIMO_ADULTOS: 30,
+  // Crianças: faixas de idade e quanto cada uma paga do valor por pessoa
+  CRIANCAS: [
+    {id:'c812', rotulo:'de 8 a 12 anos', curto:'8 a 12 anos', pct:50},
+    {id:'c47',  rotulo:'de 4 a 7 anos',  curto:'4 a 7 anos',  pct:20},
+    {id:'c03',  rotulo:'até 3 anos',     curto:'até 3 anos',  pct:0}
+  ],
+  // Duração do evento: o horário de término sai do início + estas horas
+  DURACAO_HORAS: { buffet:5, mao:4 },
   CONTRATADOS: {
     saymon: {
       apelido: 'Saymon', telefone: '(61) 98265-5292',
@@ -295,7 +312,7 @@ function modeloBuffet(){
   return {
     tipo:'buffet', cliente:'', telefone:'', dataEvento:'', local:'',
     ano: new Date().getFullYear(), validade: CONFIG.VALIDADE_DIAS,
-    convidados:{ modo:'minimo', qtd: CONFIG.MINIMO_ADULTOS },
+    convidados:{ modo:'minimo', qtd: CONFIG.MINIMO_ADULTOS, criancas:{} },
     intro:[
       {c:'b', t:'Conforme solicitado segue uma sugestão detalhada, proposta inclui profissionais treinados, toalha/forro para a mesa do buffet, pratos e talheres individuais, todo material para fazer e servir o buffet e as entradas (exceto mesas, cadeiras e toalhas para acomodação dos participantes).'},
       {c:'b', t:'O Cardápio e os ingredientes são apenas sugestivos e podem ser alterados (sujeito a alteração de valores).'},
@@ -368,8 +385,9 @@ function modeloContrato(orc){
     contratado: orc.pixDe || 'saymon',
     servico: orc.tipo==='mao' ? 'Mão de obra de churrasqueiro (churrasco em domicílio)' : 'Churrasco em domicílio (sem bebidas)',
     pessoas: orc.convidados && orc.convidados.qtd ? orc.convidados.qtd : 0,
+    criancas:{}, valorPessoa:'', totalManual:false,
     total: 0, adiantamento: 0, adiantamentoAuto:true,
-    data: orc.dataEvento || '', horaIni:'12:00', horaFim:'17:00',
+    data: orc.dataEvento || '', horaIni:'12:00', horaFim:'17:00', horaFimManual:false,
     endereco: orc.local || '',
     extras:[],          // {tipo:'garcom'|'aluguel'|'livre', qtd, desc, v, t}
     dataContrato: hoje(),
@@ -433,7 +451,9 @@ function extenso(v){
 function cabOrc(o){
   const conv = o.tipo==='mao'
     ? (o.convidados.qtd ? `Quantidade de convidados: ${esc(o.convidados.qtd)}` : '')
-    : (o.convidados.modo==='definido' ? `Quantidade de convidados: ${num(o.convidados.qtd)||0} adultos` : `Quantidade de convidados: mínimo de ${CONFIG.MINIMO_ADULTOS} adultos`);
+    : (()=>{ const c=o.convidados, n=totalCriancas(c);
+        const ad = c.modo==='definido' ? `${num(c.qtd)||0} adultos` : `mínimo de ${CONFIG.MINIMO_ADULTOS} adultos`;
+        return `Quantidade de convidados: ${ad}${n?` e ${n} ${n>1?'crianças':'criança'}`:''}`; })();
   return `<div class="cab"><img src="${IMG_BANNER}"><div class="tit"><div class="a">Orçamento - ${esc(o.ano)}</div><div>${conv}</div><div>Orçamento válido por ${esc(o.validade)} dias</div></div></div>`;
 }
 const par = p => `<p class="${p.c==='d'?'d':''}">${esc(p.t)}</p>`;
@@ -462,6 +482,8 @@ function valoresBuffet(o){
     const NOME={sem:'sem bebidas', refri:'com refrigerantes', alc:'com bebida alcoólica'};
     if(e.length===1){ if(tot(e[0])>0) html+=`<div class="tot">Valor total: ${moeda(tot(e[0]))} (${extenso(tot(e[0]))}).</div>`; }
     else { const l=e.filter(id=>tot(id)>0); if(l.length) html+=`<div class="tots">${l.map(id=>`<div class="tot">Valor total ${NOME[id]}: ${moeda(tot(id))} (${extenso(tot(id))}).</div>`).join('')}</div>`; }
+    if(temCriancas(o.convidados) && qtdDefinida(o) && e.some(id=>tot(id)>0))
+      html+=`<p class="notacri">Valor calculado para ${qtdDefinida(o)} adultos e ${esc(juntarE(textoCriancas(o.convidados,true)))}.</p>`;
   }
   return html;
 }
@@ -500,7 +522,7 @@ function paginasContrato(k){
     <h2>CONTRATO</h2>
     <p><b>CONTRATANTE:</b> ${esc(k.contratante.nome||'NOME COMPLETO')}, CPF ${esc(k.contratante.cpf||'000.000.000-00')}, endereço: ${esc(k.contratante.endereco||'Brasília, DF')}.</p>
     <p><b>CONTRATADO:</b> ${esc(ct.nome)}, CPF ${esc(ct.cpf)}, endereço: ${esc(ct.endereco)}.</p>
-    <p><b>OBJETO:</b> Prestação de Serviços do tipo: ${servHtml} para ${pessoas} (${extInt(pessoas)}) pessoas adultas, no valor total de ${moedaCtr(k.total)} (${extenso(k.total)}), a ser prestado no dia ${dataExt(k.data)}, no horário compreendido entre ${horaCtr(k.horaIni)} e ${horaCtr(k.horaFim)}, no seguinte endereço: ${esc(k.endereco)}.</p>
+    <p><b>OBJETO:</b> Prestação de Serviços do tipo: ${servHtml} para ${fraseCtrPessoas(k)}, no valor total de ${moedaCtr(k.total)} (${extenso(k.total)}), a ser prestado no dia ${dataExt(k.data)}, no horário compreendido entre ${horaCtr(k.horaIni)} e ${horaCtr(k.horaFim)}, no seguinte endereço: ${esc(k.endereco)}.</p>
     <p>${esc(k.textos.fornece).replace('O CONTRATADO','O <b>CONTRATADO</b>')}</p>
     <p>O <b>CONTRATANTE</b> deverá enviar por meio de ${esc(ct.meioPagto)}, o valor de ${moedaCtr(k.adiantamento)} (${extenso(k.adiantamento)}), referente ao adiantamento do serviço contratado, <b>confirmando o agendamento.</b></p>
     <p class="ind"><u>Dados Pix:</u>&nbsp;&nbsp; ${esc(ct.pixCtr)}</p>
@@ -608,6 +630,56 @@ function totalDe(o){
   const v=o.valores; if(!v) return 0; if(v.modo==='um') return num(v.total)||0; return 0;
 }
 function qtdDefinida(o){ return o.convidados.modo==='definido'?num(o.convidados.qtd):0; }
+
+/* ---------- crianças ---------- */
+function criancasDe(x){ const c=(x&&x.criancas)||{}, o={}; CONFIG.CRIANCAS.forEach(f=>o[f.id]=Math.max(0,parseInt(c[f.id])||0)); return o; }
+function totalCriancas(x){ const c=criancasDe(x); return CONFIG.CRIANCAS.reduce((s,f)=>s+c[f.id],0); }
+const temCriancas=x=>totalCriancas(x)>0;
+/* quantos "adultos equivalentes" o evento tem, já contando a porcentagem de cada faixa */
+function equivalentes(adultos,x){ const c=criancasDe(x); return CONFIG.CRIANCAS.reduce((s,f)=>s+c[f.id]*f.pct/100, num(adultos)||0); }
+function juntarE(a){ return a.length<2?(a[0]||''):a.slice(0,-1).join(', ')+' e '+a[a.length-1]; }
+function textoCriancas(x,comPct){ const c=criancasDe(x);
+  return CONFIG.CRIANCAS.filter(f=>c[f.id]>0).map(f=>`${c[f.id]} ${c[f.id]>1?'crianças':'criança'} ${f.rotulo}${comPct?` (${f.pct?f.pct+'% do valor':'não pagam'})`:''}`); }
+/* "um" vira "uma" e "dois" vira "duas" porque criança é palavra feminina */
+function extFem(n){ return extInt(n).replace(/\bum$/,'uma').replace(/\bdois$/,'duas'); }
+function fraseCtrPessoas(k){ const a=num(k.pessoas)||0, c=criancasDe(k);
+  const partes=[`${a} (${extInt(a)}) pessoas adultas`];
+  CONFIG.CRIANCAS.forEach(f=>{ const n=c[f.id]; if(n) partes.push(`${n} (${extFem(n)}) ${n>1?'crianças':'criança'} ${f.rotulo}`); });
+  return juntarE(partes); }
+function linhasCriancas(x){ const c=criancasDe(x);
+  return CONFIG.CRIANCAS.map(f=>`<div class="cri"><span class="cri-t">${f.curto}<small>${f.pct?`pagam ${f.pct}% do valor`:'não pagam'}</small></span>
+    <div class="mini"><button type="button" data-ck="${f.id}" data-cd="-1" aria-label="Menos uma criança de ${f.curto}">−</button><input inputmode="numeric" data-ci="${f.id}" value="${c[f.id]||''}" aria-label="Crianças de ${f.curto}"><button type="button" data-ck="${f.id}" data-cd="1" aria-label="Mais uma criança de ${f.curto}">+</button></div></div>`).join(''); }
+function ligarCriancas(el,x,aoMudar){
+  x.criancas=x.criancas||{};
+  const mostrar=id=>{ const i=el.querySelector(`[data-ci="${id}"]`); if(i) i.value=x.criancas[id]||''; };
+  el.querySelectorAll('[data-ck]').forEach(b=>b.onclick=()=>{ const id=b.dataset.ck;
+    x.criancas[id]=Math.max(0,(parseInt(x.criancas[id])||0)+(+b.dataset.cd)); mostrar(id); if(aoMudar) aoMudar(); });
+  el.querySelectorAll('[data-ci]').forEach(i=>i.addEventListener('input',()=>{ x.criancas[i.dataset.ci]=Math.max(0,parseInt(i.value)||0); if(aoMudar) aoMudar(); }));
+}
+
+/* ---------- horário: término = início + duração ---------- */
+function horasEvento(k){ return k.servico===SERV[3][3] ? CONFIG.DURACAO_HORAS.mao : CONFIG.DURACAO_HORAS.buffet; }
+function somaHoras(hhmm,horas){ if(!hhmm) return ''; const [h,m]=String(hhmm).split(':').map(Number);
+  if(isNaN(h)||isNaN(m)) return ''; const t=((h*60+m+horas*60)%1440+1440)%1440;
+  return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0'); }
+function autoHoraFim(k){ if(k.horaFimManual) return; const f=somaHoras(k.horaIni,horasEvento(k)); if(f) k.horaFim=f; }
+
+/* ---------- total do contrato ---------- */
+function extrasInclusos(k){ return (k.extras||[]).reduce((s,e)=>s+(e.incluso?num(e.v):0),0); }
+function autoTotalCtr(k){
+  const pp=num(k.valorPessoa);
+  // sem valor por pessoa, ou com o total escrito na mão, o total fica como está
+  if(!k.totalManual && pp) k.total=Math.round((equivalentes(k.pessoas,k)*pp+extrasInclusos(k))*100)/100;
+  if(k.adiantamentoAuto) k.adiantamento=Math.round(num(k.total)*50)/100; }
+function contaLinhas(adultos,x,pp){ const a=num(adultos)||0, c=criancasDe(x), L=[];
+  if(a) L.push(`${a} adultos × ${moeda(pp)} = ${moeda(a*pp)}`);
+  CONFIG.CRIANCAS.forEach(f=>{ const n=c[f.id]; if(n) L.push(`${n} ${n>1?'crianças':'criança'} ${f.rotulo} (${f.pct?f.pct+'%':'não pagam'}) = ${moeda(n*pp*f.pct/100)}`); });
+  return L; }
+function contaCtrHtml(k){ const pp=num(k.valorPessoa);
+  if(!pp) return 'Sem o valor por pessoa não dá pra calcular. Escreva o valor total direto, se preferir.';
+  const L=contaLinhas(k.pessoas,k,pp);
+  (k.extras||[]).forEach(e=>{ if(e.incluso&&num(e.v)) L.push(`${e.tipo==='garcom'?'garçom adicional':e.tipo==='aluguel'?'aluguel de material':'cláusula a mais'} = ${moeda(num(e.v))}`); });
+  return L.join('<br>'); }
 /* no modo "só o que o cliente pediu", cada opção marcada tem o seu próprio valor total */
 function prepTotais(o){
   const v=o.valores;
@@ -616,8 +688,8 @@ function prepTotais(o){
 }
 function autoTotal(o){
   if(o.tipo!=='buffet') return; const v=o.valores; if(v.modo!=='um') return;
-  prepTotais(o); const e=escolhidos(o), q=qtdDefinida(o);
-  e.forEach(id=>{ if(v.totaisManual[id]) return; const pp=num((v.pacotes.find(p=>p.id===id)||{}).v); v.totais[id]=(q&&pp)?Math.round(q*pp*100)/100:0; });
+  prepTotais(o); const e=escolhidos(o), q=qtdDefinida(o), eq=q?equivalentes(q,o.convidados):0;
+  e.forEach(id=>{ if(v.totaisManual[id]) return; const pp=num((v.pacotes.find(p=>p.id===id)||{}).v); v.totais[id]=(eq&&pp)?Math.round(eq*pp*100)/100:0; });
   v.total = e.length===1 ? num(v.totais[e[0]]) : 0;
 }
 function descPadrao(o,id){ const m=(o.valores.marcaCerveja||'').trim(); return PACOTES_TXT[id].replace('{cerveja}', m?' '+m:''); }
@@ -641,16 +713,23 @@ const PASSOS={
   /* ---------- buffet ---------- */
   convidados:{
     nome:'Convidados',
-    titulo:()=>'Quantos adultos?',
-    sub:()=>'Crianças seguem a regra de idade que já vai escrita no orçamento.',
+    titulo:()=>'Quantos convidados?',
+    sub:()=>'As crianças entram na conta do valor total, cada faixa com a sua porcentagem.',
     corpo:()=>{ const c=doc.orc.convidados, def=c.modo==='definido';
-      return `<div id="bxQ" class="${def?'':'apagado'}">${stepper(def?num(c.qtd):CONFIG.MINIMO_ADULTOS)}${atalhosQtd()}</div>
-      ${tile('min','🤷','Ainda não sabe',`Vai escrito “mínimo de ${CONFIG.MINIMO_ADULTOS} adultos”`,!def)}`; },
+      return `<h2 class="h2" style="margin-top:0">Adultos</h2>
+      <div id="bxQ" class="${def?'':'apagado'}">${stepper(def?num(c.qtd):CONFIG.MINIMO_ADULTOS)}${atalhosQtd()}</div>
+      ${tile('min','🤷','Ainda não sabe',`Vai escrito “mínimo de ${CONFIG.MINIMO_ADULTOS} adultos”`,!def)}
+      <h2 class="h2">Tem crianças?</h2>
+      <p class="dica" style="margin:-6px 0 10px">Conte todas, mesmo as que não pagam.</p>
+      ${linhasCriancas(c)}`; },
     montar:el=>{ const c=doc.orc.convidados;
       ligarStepper(el,n=>{ c.modo='definido'; c.qtd=n; el.querySelector('#bxQ').classList.remove('apagado'); el.querySelector('.tile').classList.remove('on'); });
       el.querySelector('.tile').onclick=()=>{ c.modo='minimo'; c.qtd=CONFIG.MINIMO_ADULTOS; redesenhar('convidados'); };
+      ligarCriancas(el,c);
     },
-    resumo:()=>doc.orc.convidados.modo==='definido'?`${num(doc.orc.convidados.qtd)} adultos`:`Mínimo de ${CONFIG.MINIMO_ADULTOS} adultos`
+    resumo:()=>{ const c=doc.orc.convidados;
+      const ad=c.modo==='definido'?`${num(c.qtd)} adultos`:`Mínimo de ${CONFIG.MINIMO_ADULTOS} adultos`;
+      const t=textoCriancas(c); return t.length?`${ad}, ${juntarE(t)}`:ad; }
   },
 
   bebidas:{
@@ -699,8 +778,10 @@ const PASSOS={
         escolhidos(o).forEach(id=>{
           const inT=el.querySelector(`[data-b="valores.totais.${id}"]`); if(inT && !v.totaisManual[id] && !(m&&m[1]===id)) inT.value=fmtIn(v.totais[id]);
           const box=el.querySelector(`[data-conta="${id}"]`); if(!box) return; const pp=num((v.pacotes.find(x=>x.id===id)||{}).v);
-          box.textContent = !q ? 'Sem a quantidade de adultos não dá pra calcular. Digite o total se quiser que ele apareça.'
-            : pp ? `${q} adultos × ${moeda(pp)} = ${moeda(q*pp)}`+(v.totaisManual[id]&&Math.abs(num(v.totais[id])-q*pp)>0.001?' (você mudou o total)':'') : '';
+          if(!q) box.textContent='Sem a quantidade de adultos não dá pra calcular. Digite o total se quiser que ele apareça.';
+          else if(!pp) box.textContent='';
+          else box.innerHTML=contaLinhas(q,o.convidados,pp).join('<br>')
+            +(v.totaisManual[id]&&Math.abs(num(v.totais[id])-equivalentes(q,o.convidados)*pp)>0.001?'<br>(você mudou o total)':'');
         });
       };
       autoTotal(o); ligar(el,o,conta); conta('');
@@ -829,25 +910,48 @@ const PASSOS={
       return SERV.map(([id,e,t])=>tile(id,e,t,'',sel===id)).join('')
         +tile('outro','✏️','Outro serviço','',sel==='outro')
         +(sel==='outro'?campo('Como vai escrito no contrato','servico','Ex.: Churrasco em domicílio (com garçom)'):'')
-        +`<h2 class="h2">Quantos adultos?</h2>${stepper(num(k.pessoas)||'')}${atalhosQtd()}`; },
+        +`<h2 class="h2">Quantos adultos?</h2>${stepper(num(k.pessoas)||'')}${atalhosQtd()}
+        <h2 class="h2">Tem crianças?</h2>
+        <p class="dica" style="margin:-6px 0 10px">Conte todas, mesmo as que não pagam. Elas aparecem no contrato.</p>
+        ${linhasCriancas(k)}`; },
     montar:el=>{ const k=doc.ctr;
       el.querySelectorAll('.tile').forEach(b=>b.onclick=()=>{ const id=b.dataset.v;
         if(id==='outro'){ doc.servOutro=true; if(SERV.some(s=>s[3]===k.servico)) k.servico=''; }
-        else { doc.servOutro=false; k.servico=SERV.find(s=>s[0]===id)[3]; }
-        redesenhar('servico'); });
-      ligar(el,k); ligarStepper(el,n=>k.pessoas=n);
+        else { doc.servOutro=false; k.servico=SERV.find(s=>s[0]===id)[3];
+          // veio de um orçamento com mais de uma opção: já traz o preço da que o cliente fechou
+          if(k.precos && k.precos[id]){ k.valorPessoa=k.precos[id]; k.totalManual=false; } }
+        autoHoraFim(k); autoTotalCtr(k); redesenhar('servico'); });
+      ligar(el,k); ligarStepper(el,n=>{ k.pessoas=n; autoTotalCtr(k); });
+      ligarCriancas(el,k,()=>autoTotalCtr(k));
     },
-    resumo:()=>{ const k=doc.ctr; const s=SERV.find(x=>x[3]===k.servico); return (s?s[2]:(k.servico||'Escolher o serviço'))+`, ${num(k.pessoas)} adultos`; }
+    resumo:()=>{ const k=doc.ctr; const s=SERV.find(x=>x[3]===k.servico);
+      const base=(s?s[2]:(k.servico||'Escolher o serviço'))+`, ${num(k.pessoas)} adultos`;
+      const t=textoCriancas(k); return t.length?`${base}, ${juntarE(t)}`:base; }
   },
 
   quando:{
     nome:'Data e local',
     titulo:()=>'Quando e onde?',
     corpo:()=>campoData('Data do evento','data')
-      +`<div class="lado"><label class="campo"><span>Começa</span><input type="time" data-b="horaIni"></label><label class="campo"><span>Termina</span><input type="time" data-b="horaFim"></label></div>`
+      +`<div class="lado"><label class="campo"><span>Começa</span><input type="time" data-b="horaIni"></label><label class="campo"><span>Termina</span><input type="time" data-b="horaFim"></label></div>
+      <p class="dica" id="dicaDur" style="margin:-10px 0 18px"></p>`
       +campo('Endereço do evento','endereco','Ex.: QI 15, Conjunto 4, Casa 8, Lago Sul')
       +`<div class="atalhos"><button type="button" class="chip" id="mesmoEnd">Mesmo endereço do cliente</button></div>`,
-    montar:el=>{ const k=doc.ctr; ligar(el,k);
+    montar:el=>{ const k=doc.ctr;
+      const campoFim=()=>el.querySelector('[data-b=horaFim]');
+      const dica=()=>{ const d=el.querySelector('#dicaDur'); if(!d) return; const hs=horasEvento(k);
+        d.innerHTML = k.horaFimManual
+          ? `Você escolheu o término na mão. <button type="button" class="link" id="voltaDur">Voltar pras ${hs} horas de evento</button>`
+          : `O término acompanha o início: ${hs} horas de evento.`;
+        const v=el.querySelector('#voltaDur');
+        if(v) v.onclick=()=>{ k.horaFimManual=false; autoHoraFim(k); const f=campoFim(); if(f) f.value=k.horaFim; dica(); };
+      };
+      ligar(el,k,(pp,inp)=>{
+        if(pp==='horaFim') k.horaFimManual = inp.value.trim()!=='' && inp.value!==somaHoras(k.horaIni,horasEvento(k));
+        if(pp==='horaIni'){ autoHoraFim(k); const f=campoFim(); if(f && !k.horaFimManual) f.value=k.horaFim; }
+        dica();
+      });
+      autoHoraFim(k); const f=campoFim(); if(f && !k.horaFimManual) f.value=k.horaFim; dica();
       el.querySelector('#mesmoEnd').onclick=()=>{ k.endereco=k.contratante.endereco||''; el.querySelector('[data-b=endereco]').value=k.endereco; };
     },
     resumo:()=>{ const k=doc.ctr; return [k.data?dataBR(k.data):'Sem data', (k.horaIni&&k.horaFim)?`${k.horaIni} às ${k.horaFim}`:'', k.endereco].filter(Boolean).join(', '); }
@@ -858,7 +962,9 @@ const PASSOS={
     titulo:()=>'Qual o valor fechado?',
     cta:'Ver como ficou',
     corpo:()=>{ const k=doc.ctr;
-      return `${campoDin('Valor total','total')}
+      return `${campoDin('Valor por pessoa','valorPessoa')}
+        <div class="totalbox"><p class="conta-tot" id="contaCtr"></p>${campoDin('Valor total','total')}
+        <button type="button" class="link hidden" id="voltaCalc">Voltar a calcular sozinho</button></div>
         <div class="sinal" id="sinal"></div>
         <button type="button" class="chk ${k.adiantamentoAuto?'':'on'}" id="chkSinal">O sinal combinado não é 50%</button>
         ${k.adiantamentoAuto?'':campoDin('Valor do sinal','adiantamento')}
@@ -869,13 +975,24 @@ const PASSOS={
       const sinal=()=>{ if(k.adiantamentoAuto) k.adiantamento=Math.round(num(k.total)*50)/100;
         const rest=Math.round((num(k.total)-num(k.adiantamento))*100)/100;
         el.querySelector('#sinal').innerHTML=num(k.total)?`<div><span>Sinal pra reservar a data</span><b>${moeda(k.adiantamento)}</b></div><div><span>Resto, no dia do evento</span><b>${moeda(rest)}</b></div>`:''; };
-      ligar(el,k,sinal); sinal();
+      const conta=(pp,inp)=>{
+        if(pp==='total') k.totalManual = inp.value.trim()!=='';
+        autoTotalCtr(k);
+        const t=el.querySelector('[data-b="total"]'); if(t && !k.totalManual && pp!=='total') t.value=fmtIn(k.total);
+        const c=el.querySelector('#contaCtr'); if(c) c.innerHTML=contaCtrHtml(k);
+        const v=el.querySelector('#voltaCalc'); if(v) v.classList.toggle('hidden', !(k.totalManual && num(k.valorPessoa)));
+        sinal();
+      };
+      ligar(el,k,conta); conta('');
+      const vc=el.querySelector('#voltaCalc'); if(vc) vc.onclick=()=>{ k.totalManual=false; autoTotalCtr(k);
+        const t=el.querySelector('[data-b="total"]'); if(t) t.value=fmtIn(k.total); conta(''); };
       el.querySelector('#chkSinal').onclick=()=>{ k.adiantamentoAuto=!k.adiantamentoAuto; redesenhar('valorCtr'); };
       el.querySelectorAll('[data-ext]').forEach(b=>b.onclick=()=>{ const t=b.dataset.ext; k.extras.push(t==='livre'?{tipo:'livre',t:''}:{tipo:t,qtd:1,desc:'',v:''}); redesenhar('valorCtr'); });
-      el.querySelectorAll('[data-rmx]').forEach(b=>b.onclick=()=>{ k.extras.splice(+b.dataset.rmx,1); redesenhar('valorCtr'); });
-      el.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>{ const e=k.extras[+b.dataset.inc]; e.incluso=!e.incluso; b.classList.toggle('on',e.incluso); });
+      el.querySelectorAll('[data-rmx]').forEach(b=>b.onclick=()=>{ k.extras.splice(+b.dataset.rmx,1); autoTotalCtr(k); redesenhar('valorCtr'); });
+      el.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>{ const e=k.extras[+b.dataset.inc]; e.incluso=!e.incluso; b.classList.toggle('on',e.incluso); conta(''); });
     },
-    resumo:()=>{ const k=doc.ctr; return `Total ${moeda(k.total)}, sinal ${moeda(k.adiantamento)}`+(k.extras.length?`, ${k.extras.length} cláusula${k.extras.length>1?'s':''} a mais`:''); }
+    resumo:()=>{ const k=doc.ctr; autoTotalCtr(k);
+      return `Total ${moeda(k.total)}, sinal ${moeda(k.adiantamento)}`+(k.extras.length?`, ${k.extras.length} cláusula${k.extras.length>1?'s':''} a mais`:''); }
   }
 };
 
@@ -1100,12 +1217,19 @@ function contratoDoOrcamento(){
   k.contratado=o.pixDe||pixPadrao();
   k.contratante.nome=o.cliente||'';
   k.data=o.dataEvento||''; k.endereco=o.local||'';
-  k.total=totalDe(o)||0; k.adiantamento=Math.round(num(k.total)*50)/100;
+  k.total=totalDe(o)||0;
+  k.criancas=Object.assign({}, (o.convidados&&o.convidados.criancas)||{});
   if(o.tipo==='buffet'){
     k.pessoas=qtdDefinida(o);
     const e=o.valores.modo==='um'?escolhidos(o):[];
     k.servico = e.length===1 ? SERV.find(s=>s[0]===e[0])[3] : '';
+    // guarda os preços do orçamento pra preencher sozinho quando ele escolher a modalidade
+    k.precos={}; (o.valores.pacotes||[]).forEach(x=>{ if(num(x.v)) k.precos[x.id]=num(x.v); });
+    if(e.length===1) k.valorPessoa=ppEscolhido(o);
   } else { k.pessoas=parseInt(o.convidados.qtd)||0; k.servico=SERV[3][3]; }
+  k.totalManual = !num(k.valorPessoa) && num(k.total)>0;
+  autoHoraFim(k); autoTotalCtr(k);
+  k.adiantamento=Math.round(num(k.total)*50)/100;
   n.ctr=k; n.orc.cliente=k.contratante.nome; n.orc.dataEvento=k.data; n.orc.local=k.endereco; n.orc.pixDe=k.contratado;
   n.criadoPor=usuario; doc=n; passo=0; voltarResumo=false; telaPasso();
   toast('Já trouxe o que tinha no orçamento');
@@ -1177,7 +1301,7 @@ function textoZap(o){
    DOCUMENTO: prévia e PDF
    ===================================================================== */
 function documento(){
-  if(doc.tipo==='contrato') return {pags:paginasContrato(doc.ctr), nome:`Contrato - ${semAcento(doc.ctr.contratante.nome)||'cliente'}.pdf`};
+  if(doc.tipo==='contrato'){ autoTotalCtr(doc.ctr); return {pags:paginasContrato(doc.ctr), nome:`Contrato - ${semAcento(doc.ctr.contratante.nome)||'cliente'}.pdf`}; }
   autoTotal(doc.orc);
   return {pags: doc.tipo==='mao'?paginasMao(doc.orc):paginasBuffet(doc.orc), nome:`Proposta - ${semAcento(doc.orc.cliente)||'cliente'}.pdf`};
 }
