@@ -107,6 +107,7 @@ h1{font-size:30px;line-height:1.12;font-weight:700;margin:0 0 8px;letter-spacing
 .chip{min-height:46px;padding:0 16px;border-radius:99px;background:var(--placa);border:2px solid var(--linha);font-size:16px;font-weight:600}
 .chip:active{border-color:var(--ouro)}
 .apagado{opacity:.4}
+.hidden{display:none!important}
 
 /* dinheiro */
 .preco{background:var(--placa);border:2px solid var(--linha);border-radius:18px;padding:16px;margin:0 0 14px}
@@ -232,6 +233,10 @@ textarea.pronta{border-color:var(--ouro);background:#1c1a12;font-size:17px;line-
 .pg.ctr .data{text-align:center;margin:24px 0 46px}
 .pg.ctr .assin{text-align:center;margin-top:40px;line-height:1.5}
 .pg.ctr .assin b{display:block}
+.pg.ctr .assinaturas{display:flex;gap:46px;margin-top:30px}
+.pg.ctr .assinaturas .col{flex:1;min-width:0;text-align:center;line-height:1.5}
+.pg.ctr .assinaturas .espaco{height:92px}
+.pg.ctr .assinaturas b{display:block;border-top:1px solid #000;padding-top:7px}
 .pg.orc .notacri{font-style:italic;font-size:13.5px;color:var(--ouro);margin:-12px 0 20px}
 .pg.orc .tots{margin:14px 0 22px}
 .pg.orc .tots .tot{margin:0 0 6px;font-size:18px}
@@ -386,7 +391,7 @@ function modeloContrato(orc){
     servico: orc.tipo==='mao' ? 'Mão de obra de churrasqueiro (churrasco em domicílio)' : 'Churrasco em domicílio (sem bebidas)',
     pessoas: orc.convidados && orc.convidados.qtd ? orc.convidados.qtd : 0,
     criancas:{}, valorPessoa:'', totalManual:false,
-    total: 0, adiantamento: 0, adiantamentoAuto:true,
+    total: 0, adiantamento: 0, adiantamentoAuto:true, sinalPago:false,
     data: orc.dataEvento || '', horaIni:'12:00', horaFim:'17:00', horaFimManual:false,
     endereco: orc.local || '',
     extras:[],          // {tipo:'garcom'|'aluguel'|'livre', qtd, desc, v, t}
@@ -524,7 +529,7 @@ function paginasContrato(k){
     <p><b>CONTRATADO:</b> ${esc(ct.nome)}, CPF ${esc(ct.cpf)}, endereço: ${esc(ct.endereco)}.</p>
     <p><b>OBJETO:</b> Prestação de Serviços do tipo: ${servHtml} para ${fraseCtrPessoas(k)}, no valor total de ${moedaCtr(k.total)} (${extenso(k.total)}), a ser prestado no dia ${dataExt(k.data)}, no horário compreendido entre ${horaCtr(k.horaIni)} e ${horaCtr(k.horaFim)}, no seguinte endereço: ${esc(k.endereco)}.</p>
     <p>${esc(k.textos.fornece).replace('O CONTRATADO','O <b>CONTRATADO</b>')}</p>
-    <p>O <b>CONTRATANTE</b> deverá enviar por meio de ${esc(ct.meioPagto)}, o valor de ${moedaCtr(k.adiantamento)} (${extenso(k.adiantamento)}), referente ao adiantamento do serviço contratado, <b>confirmando o agendamento.</b></p>
+    <p>O <b>CONTRATANTE</b> ${k.sinalPago?'enviou':'deverá enviar'} por meio de ${esc(ct.meioPagto)}, o valor de ${moedaCtr(k.adiantamento)} (${extenso(k.adiantamento)}), referente ao adiantamento do serviço contratado, <b>confirmando o agendamento.</b></p>
     <p class="ind"><u>Dados Pix:</u>&nbsp;&nbsp; ${esc(ct.pixCtr)}</p>
     ${ct.banco?`<div class="banco"><div class="l"><u>Dados para transferência bancária:</u></div><div class="r">${ct.banco.map(esc).join('<br>')}</div></div>`:''}
     <p>O <b>CONTRATANTE</b> pagará o restante, no valor de ${moedaCtr(rest)} (${extenso(rest)}), no dia ${dataExt(k.data)}, por ocasião do término da prestação de serviço.</p>
@@ -535,8 +540,10 @@ function paginasContrato(k){
     <p>${esc(k.textos.foro)}</p>
     <p>${esc(k.textos.final).replace(/^CONTRATANTE e CONTRATADO/,'<b>CONTRATANTE</b> e <b>CONTRATADO</b>')}</p>
     <div class="data">${dataExt(k.dataContrato)}.</div>
-    <div class="assin"><b>CONTRATADO</b>${esc(ct.nome)}</div>
-    <div class="assin" style="margin-top:56px"><b>CONTRATANTE</b>${esc(k.contratante.nome||'NOME COMPLETO')}</div>
+    <div class="assinaturas">
+      <div class="col"><div class="espaco"></div><b>CONTRATADO</b>${esc(ct.nome)}</div>
+      <div class="col"><div class="espaco"></div><b>CONTRATANTE</b>${esc(k.contratante.nome||'NOME COMPLETO')}</div>
+    </div>
   </div></div>`];
 }
 
@@ -966,6 +973,7 @@ const PASSOS={
         <div class="totalbox"><p class="conta-tot" id="contaCtr"></p>${campoDin('Valor total','total')}
         <button type="button" class="link hidden" id="voltaCalc">Voltar a calcular sozinho</button></div>
         <div class="sinal" id="sinal"></div>
+        <button type="button" class="chk ${k.sinalPago?'on':''}" id="chkPago">O cliente já pagou o sinal</button>
         <button type="button" class="chk ${k.adiantamentoAuto?'':'on'}" id="chkSinal">O sinal combinado não é 50%</button>
         ${k.adiantamentoAuto?'':campoDin('Valor do sinal','adiantamento')}
         <h2 class="h2">Tem garçom a mais ou aluguel?</h2>
@@ -974,7 +982,7 @@ const PASSOS={
     montar:el=>{ const k=doc.ctr;
       const sinal=()=>{ if(k.adiantamentoAuto) k.adiantamento=Math.round(num(k.total)*50)/100;
         const rest=Math.round((num(k.total)-num(k.adiantamento))*100)/100;
-        el.querySelector('#sinal').innerHTML=num(k.total)?`<div><span>Sinal pra reservar a data</span><b>${moeda(k.adiantamento)}</b></div><div><span>Resto, no dia do evento</span><b>${moeda(rest)}</b></div>`:''; };
+        el.querySelector('#sinal').innerHTML=num(k.total)?`<div><span>${k.sinalPago?'Sinal que o cliente já pagou':'Sinal pra reservar a data'}</span><b>${moeda(k.adiantamento)}</b></div><div><span>Resto, no dia do evento</span><b>${moeda(rest)}</b></div>`:''; };
       const conta=(pp,inp)=>{
         if(pp==='total') k.totalManual = inp.value.trim()!=='';
         autoTotalCtr(k);
@@ -986,13 +994,14 @@ const PASSOS={
       ligar(el,k,conta); conta('');
       const vc=el.querySelector('#voltaCalc'); if(vc) vc.onclick=()=>{ k.totalManual=false; autoTotalCtr(k);
         const t=el.querySelector('[data-b="total"]'); if(t) t.value=fmtIn(k.total); conta(''); };
+      el.querySelector('#chkPago').onclick=()=>{ k.sinalPago=!k.sinalPago; redesenhar('valorCtr'); };
       el.querySelector('#chkSinal').onclick=()=>{ k.adiantamentoAuto=!k.adiantamentoAuto; redesenhar('valorCtr'); };
       el.querySelectorAll('[data-ext]').forEach(b=>b.onclick=()=>{ const t=b.dataset.ext; k.extras.push(t==='livre'?{tipo:'livre',t:''}:{tipo:t,qtd:1,desc:'',v:''}); redesenhar('valorCtr'); });
       el.querySelectorAll('[data-rmx]').forEach(b=>b.onclick=()=>{ k.extras.splice(+b.dataset.rmx,1); autoTotalCtr(k); redesenhar('valorCtr'); });
       el.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>{ const e=k.extras[+b.dataset.inc]; e.incluso=!e.incluso; b.classList.toggle('on',e.incluso); conta(''); });
     },
     resumo:()=>{ const k=doc.ctr; autoTotalCtr(k);
-      return `Total ${moeda(k.total)}, sinal ${moeda(k.adiantamento)}`+(k.extras.length?`, ${k.extras.length} cláusula${k.extras.length>1?'s':''} a mais`:''); }
+      return `Total ${moeda(k.total)}, sinal ${moeda(k.adiantamento)}${k.sinalPago?' (já pago)':''}`+(k.extras.length?`, ${k.extras.length} cláusula${k.extras.length>1?'s':''} a mais`:''); }
   }
 };
 
