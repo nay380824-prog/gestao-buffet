@@ -185,9 +185,6 @@ textarea.dourado{color:var(--ouro2);border-left:6px solid var(--ouro)}
 .erro{color:#ff9d8f;font-size:16px;min-height:22px;margin:10px 0 0}
 .total-pac{border-top:1px dashed var(--linha);margin-top:16px;padding-top:12px}
 .total-pac .campo{margin:0}
-.aviso-ia{border:2px solid var(--amarelo);background:#23210a;border-radius:14px;padding:12px 14px;margin:0 0 12px;font-size:16px;line-height:1.4;color:#f1ecc0}
-.aviso-ia b{display:block;color:var(--amarelo);margin-bottom:4px}
-textarea.pronta{border-color:var(--ouro);background:#1c1a12;font-size:17px;line-height:1.5}
 
 /* ===== DOCUMENTOS (A4 = 794 x 1123 px) ===== */
 .pg{width:794px;height:1123px;position:relative;overflow:hidden;font-family:'Red Hat Display',sans-serif;color:#fff;background:#000}
@@ -263,8 +260,6 @@ const CONFIG = {
     'mayronnataniel6875@gmail.com': 'Mayron',
     'naysouzam@gmail.com': 'Nayara',
   },
-  // Nome da função do Supabase que ajeita as mensagens com IA
-  IA_FUNCAO: 'ajeitar-mensagem',
   // Quem vê na tela inicial o que TODO MUNDO fez (os outros veem só os próprios)
   ADMINS: ['Nayara'],
   TELEFONES: '(61) 98265-5292\n(61) 98108-9458',
@@ -1064,11 +1059,11 @@ function telaInicio(){
       ${tile('buffet','🍖','Orçamento de buffet','Cardápio completo, com ou sem bebidas','',true)}
       ${tile('mao','🔥','Orçamento só do churrasqueiro','O cliente compra as carnes e os acompanhamentos','',true)}
       ${tile('contrato','✍️','Contrato','Pro cliente que já fechou','',true)}
-      ${tile('msg','💬','Ajeitar mensagem pro cliente','Você diz o que quer responder e o app deixa no capricho','',true)}
+      ${tile('buscar','🔎','Procurar um cliente','Pra reenviar ou ajustar algo que já foi feito','',true)}
       <div id="ultimos"></div>
       <button type="button" class="trocar" id="bTrocar">Não é ${esc(usuario)}? Trocar</button>
     </main></div>`;
-  app().querySelectorAll('.tile').forEach(b=>b.onclick=()=>b.dataset.v==='msg'?telaMensagem():novo(b.dataset.v));
+  app().querySelectorAll('.tile').forEach(b=>b.onclick=()=>b.dataset.v==='buscar'?telaBusca():novo(b.dataset.v));
   app().querySelector('#bTrocar').onclick=async()=>{ if(!confirm('Sair e trocar de pessoa neste celular?')) return; try{ if(supa) await supa.auth.signOut(); }catch(e){} usuario=null; LS.set('cb_usuario',null); telaQuem(); };
   desenharUltimos(LS.get('cb_recentes',[]));
   window.scrollTo(0,0);
@@ -1085,66 +1080,109 @@ function desenharUltimos(rec){
   box.innerHTML=(rec.length?`<h2 class="h2">${ehAdmin()?'Últimos de todo mundo':'Seus últimos'}</h2><p class="dica" style="margin:-4px 0 6px">Pra mandar de novo ou fazer o contrato sem digitar tudo outra vez.</p>
     ${rec.map((r,i)=>`<div class="rec"><button type="button" class="rec-abre" data-i="${i}"><span class="emo" aria-hidden="true">${TIPO_EMO[r.tipo]||'📄'}</span><span style="min-width:0"><b>${esc(r.orc.cliente||'Sem nome')}</b><small>${TIPO_NOME[r.tipo]||''}${r.orc.dataEvento?', evento '+dataBR(r.orc.dataEvento):''}${ehAdmin()&&r.criadoPor&&r.criadoPor!==usuario?', feito por '+esc(r.criadoPor):''}</small></span></button></div>`).join('')}`:'')
     +(pend&&supa?`<p class="dica" style="margin-top:14px">${pend===1?'1 ainda não foi':pend+' ainda não foram'} pro sistema. O app tenta de novo sozinho quando tiver internet.</p>`:'');
-  box.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{ doc=JSON.parse(JSON.stringify(rec[+b.dataset.i])); doc.pronto=true; telaPronto(true); });
+  box.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{ doc=completar(JSON.parse(JSON.stringify(rec[+b.dataset.i]))); doc.pronto=true; telaPronto(true); });
 }
 
 /* =====================================================================
-   AJEITAR MENSAGEM (IA)
+   PROCURAR UM CLIENTE
+   Procura na tabela inteira do sistema, não só nos últimos da tela inicial.
    ===================================================================== */
-let msg=LS.get('cb_msg',{cliente:'',rascunho:'',mensagem:'',aviso:'',mudou:false});
-function guardarMsg(){ LS.set('cb_msg',msg); }
-function telaMensagem(){
-  doc=null; extra=null;
-  const tem=!!msg.mensagem, precisaAjeitar=!tem||msg.mudou;
-  app().innerHTML=`<div class="tela">
-    <header class="barra"><button type="button" class="voltar" id="bVoltar">‹ Voltar</button>${(msg.rascunho||msg.cliente)?'<button type="button" class="voltar" id="bLimpar">Começar outra</button>':''}</header>
-    <main class="conteudo">
-      <h1>Ajeitar mensagem</h1>
-      <p class="subt">Escreva do seu jeito o que você quer responder. O app arruma o português e o tom, sem mudar o que você disse.</p>
-      <label class="campo"><span>O que o cliente mandou (se quiser)</span><textarea id="mCliente" rows="3" placeholder="Cole aqui a mensagem do cliente"></textarea></label>
-      <label class="campo"><span>O que você quer responder</span><textarea id="mRascunho" rows="4" placeholder="Ex.: faz sim, tem a data, com refri fica 90 por pessoa"></textarea></label>
-      <p class="dica" style="margin:-10px 0 0">Não quer digitar? Toque no microfone do teclado e fale.</p>
-      <p class="erro" id="mErro" role="alert"></p>
-      <div id="mResultado">${tem?`
-        <h2 class="h2">Pronta pra mandar</h2>
-        ${msg.mudou?'<p class="dica" style="margin:-4px 0 10px">Você mudou o que escreveu. Toque em “Ajeitar a mensagem” pra atualizar.</p>':''}
-        ${msg.aviso?`<div class="aviso-ia"><b>Atenção</b>${esc(msg.aviso)}</div>`:''}
-        <textarea id="mPronta" class="pronta" rows="6" aria-label="Mensagem pronta"></textarea>
-        <p class="dica" style="margin:6px 0 12px">Pode mexer no texto aqui mesmo antes de copiar.</p>
-        <div class="atalhos"><button type="button" class="chip" data-aj="curta">Mais curta</button><button type="button" class="chip" data-aj="formal">Mais formal</button></div>`:''}
-      </div>
-    </main>
-    <footer class="rodape"><button type="button" class="cta" id="bMsg">${precisaAjeitar?'Ajeitar a mensagem':'Copiar a mensagem'}</button></footer>
-  </div>`;
-  const $c=document.getElementById('mCliente'), $r=document.getElementById('mRascunho'), $p=document.getElementById('mPronta'), bt=document.getElementById('bMsg'), er=document.getElementById('mErro');
-  $c.value=msg.cliente; $r.value=msg.rascunho; if($p) $p.value=msg.mensagem;
-  [$c,$r,$p].forEach(t=>{ if(!t) return; requestAnimationFrame(()=>crescer(t)); t.addEventListener('input',()=>crescer(t)); });
-  const marcarMudou=()=>{ if(msg.mensagem && !msg.mudou){ msg.mudou=true; bt.textContent='Ajeitar a mensagem'; } };
-  $c.addEventListener('input',()=>{ msg.cliente=$c.value; marcarMudou(); guardarMsg(); er.textContent=''; });
-  $r.addEventListener('input',()=>{ msg.rascunho=$r.value; marcarMudou(); guardarMsg(); er.textContent=''; });
-  if($p) $p.addEventListener('input',()=>{ msg.mensagem=$p.value; guardarMsg(); });
-  document.getElementById('bVoltar').onclick=telaInicio;
-  const lp=document.getElementById('bLimpar'); if(lp) lp.onclick=()=>{ msg={cliente:'',rascunho:'',mensagem:'',aviso:'',mudou:false}; guardarMsg(); telaMensagem(); document.getElementById('mCliente').focus(); };
-  bt.onclick=()=>{ if(bt.textContent==='Copiar a mensagem') return copiar(msg.mensagem); pedirIA(null,bt); };
-  document.querySelectorAll('[data-aj]').forEach(b=>b.onclick=()=>pedirIA(b.dataset.aj,b));
-}
-async function pedirIA(ajuste,botao){
-  const er=document.getElementById('mErro');
-  if(!msg.rascunho.trim()){ er.textContent='Escreva o que você quer responder.'; document.getElementById('mRascunho').focus(); return; }
-  if(!supa){ er.textContent='Pra ajeitar a mensagem o celular precisa estar com internet. Feche e abra o app de novo.'; return; }
-  const txt=botao.textContent; document.querySelectorAll('#bMsg,[data-aj]').forEach(b=>b.disabled=true); botao.textContent='Ajeitando…'; er.textContent='';
-  try{
-    const {data,error}=await supa.functions.invoke(CONFIG.IA_FUNCAO,{body:{cliente:msg.cliente, rascunho:msg.rascunho, ajuste, anterior:ajuste?msg.mensagem:''}});
-    if(error){ let m=''; try{ m=(await error.context.json()).erro; }catch(e){} throw new Error(m||'falhou'); }
-    if(!data||!data.mensagem) throw new Error(data&&data.erro||'falhou');
-    msg.mensagem=data.mensagem; msg.aviso=data.aviso||''; msg.mudou=false; guardarMsg();
-    telaMensagem();
-    const res=document.getElementById('mResultado'); if(res) res.scrollIntoView({behavior:'smooth',block:'start'});
-  }catch(e){
-    console.warn(e);
-    er.textContent = (e.message && e.message!=='falhou') ? e.message : 'Não deu pra ajeitar agora. Confira a internet e tente de novo.';
-    document.querySelectorAll('#bMsg,[data-aj]').forEach(b=>b.disabled=false); botao.textContent=txt;
+let indiceBusca=null;   // carregado uma vez por vez que o app abre
+const normB=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+
+async function carregarIndice(){
+  if(indiceBusca) return indiceBusca;
+  const locais=LS.get('cb_recentes',[]).map(d=>({ id:d.id, cliente:(d.orc&&d.orc.cliente)||'', tipo:d.tipo,
+    dataEvento:(d.orc&&d.orc.dataEvento)||'', criadoPor:d.criadoPor||'', atualizado:d.atualizado||'' }));
+  let nuvem=[];
+  if(supa){
+    let q=supa.from('orcamentos').select('id,cliente,tipo,data_evento,criado_por,atualizado_em')
+      .order('atualizado_em',{ascending:false}).limit(1000);
+    if(!ehAdmin()) q=q.eq('criado_por',usuario);
+    const {data,error}=await q; if(error) throw error;
+    nuvem=(data||[]).map(r=>({ id:r.id, cliente:r.cliente||'', tipo:r.tipo,
+      dataEvento:r.data_evento||'', criadoPor:r.criado_por||'', atualizado:r.atualizado_em||'' }));
   }
+  const m=new Map();
+  [...nuvem,...locais].forEach(r=>{ const x=m.get(r.id); if(!x||(r.atualizado||'')>(x.atualizado||'')) m.set(r.id,r); });
+  indiceBusca=[...m.values()].filter(r=>ehAdmin()||!r.criadoPor||r.criadoPor===usuario)
+    .sort((a,b)=>(b.atualizado||'').localeCompare(a.atualizado||''));
+  return indiceBusca;
+}
+
+function telaBusca(){
+  doc=null; extra=null;
+  app().innerHTML=`<div class="tela">
+    <header class="barra"><button type="button" class="voltar" id="bVoltar">‹ Voltar</button></header>
+    <main class="conteudo">
+      <h1>Procurar um cliente</h1>
+      <p class="subt">${ehAdmin()?'Procura em tudo o que já foi feito, não só nos últimos.':'Procura em tudo o que você já fez, não só nos últimos.'}</p>
+      <label class="campo"><span>Nome do cliente</span><input id="qBusca" placeholder="Ex.: Maria" autocomplete="off" autocapitalize="words"></label>
+      <div id="resBusca"><p class="dica">Buscando a lista…</p></div>
+    </main></div>`;
+  const inp=document.getElementById('qBusca'), box=document.getElementById('resBusca');
+  document.getElementById('bVoltar').onclick=telaInicio;
+  window.scrollTo(0,0);
+
+  const mostrar=()=>{
+    const termo=normB(inp.value);
+    if(!termo){ box.innerHTML=`<p class="dica">Comece a digitar o nome. São ${indiceBusca.length} registro${indiceBusca.length===1?'':'s'} no total.</p>`; return; }
+    const partes=termo.split(/\s+/);
+    const achou=indiceBusca.filter(r=>{ const n=normB(r.cliente); return partes.every(x=>n.includes(x)); }).slice(0,40);
+    if(!achou.length){ box.innerHTML=`<p class="dica">Nenhum cliente com “${esc(inp.value.trim())}”. Confira se o nome está escrito como foi salvo na época.</p>`; return; }
+    box.innerHTML=`<p class="dica" style="margin:0 0 6px">${achou.length} encontrado${achou.length===1?'':'s'}</p>`
+      +achou.map(r=>`<div class="rec"><button type="button" class="rec-abre" data-id="${esc(r.id)}">
+        <span class="emo" aria-hidden="true">${TIPO_EMO[r.tipo]||'📄'}</span>
+        <span style="min-width:0"><b>${esc(r.cliente||'Sem nome')}</b><small>${TIPO_NOME[r.tipo]||'Registro antigo'}${r.dataEvento?', evento '+dataBR(r.dataEvento):''}${ehAdmin()&&r.criadoPor&&r.criadoPor!==usuario?', feito por '+esc(r.criadoPor):''}</small></span>
+      </button></div>`).join('');
+    box.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>abrirRegistro(b.dataset.id,b));
+  };
+
+  carregarIndice().then(()=>{ if(document.getElementById('resBusca')){ mostrar(); inp.focus(); } })
+    .catch(e=>{ console.warn(e); if(box) box.innerHTML='<p class="dica">Não deu pra buscar a lista. Confira a internet e tente de novo.</p>'; });
+  inp.addEventListener('input',()=>{ if(indiceBusca) mostrar(); });
+}
+
+/* registros antigos podem não ter todos os campos de hoje; completa com o modelo padrão */
+function completar(d){
+  const base = d.tipo==='mao' ? modeloMao() : d.tipo==='contrato' ? modeloContratoAvulso() : modeloBuffet();
+  d.orc=Object.assign({}, base, d.orc||{});
+  if(!d.orc.convidados || typeof d.orc.convidados!=='object') d.orc.convidados=base.convidados;
+  if(!Array.isArray(d.orc.intro) || !d.orc.intro.length) d.orc.intro=base.intro;
+  if(!Array.isArray(d.orc.extras)) d.orc.extras=[];
+  if(d.tipo==='buffet'){
+    d.orc.valores=Object.assign({}, base.valores, d.orc.valores||{});
+    if(!Array.isArray(d.orc.valores.pacotes) || !d.orc.valores.pacotes.length) d.orc.valores.pacotes=base.valores.pacotes;
+    if(!Array.isArray(d.orc.cardapio) || !d.orc.cardapio.length) d.orc.cardapio=base.cardapio;
+  }
+  if(d.tipo==='mao' && (!Array.isArray(d.orc.incluso) || !d.orc.incluso.length)) d.orc.incluso=base.incluso;
+  if(d.tipo==='contrato'){
+    const bc=modeloContrato(d.orc);
+    const antigo=d.ctr && d.ctr.horaFimManual===undefined && !!d.ctr.horaFim;  // versão antiga: respeita o horário como foi fechado
+    d.ctr=Object.assign({}, bc, d.ctr||{});
+    if(antigo) d.ctr.horaFimManual=true;
+    d.ctr.contratante=Object.assign({}, bc.contratante, d.ctr.contratante||{});
+    if(!Array.isArray(d.ctr.extras)) d.ctr.extras=[];
+  }
+  return d;
+}
+
+async function abrirRegistro(id,botao){
+  const local=LS.get('cb_recentes',[]).find(r=>r.id===id);
+  if(local){ doc=completar(JSON.parse(JSON.stringify(local))); doc.pronto=true; return telaPronto(true); }
+  if(!supa){ return toast('Esse está guardado no sistema. Precisa de internet pra abrir.'); }
+  const txt=botao?botao.querySelector('b').textContent:'';
+  if(botao) botao.disabled=true;
+  try{
+    const {data,error}=await supa.from('orcamentos').select('*').eq('id',id).single();
+    if(error) throw error;
+    const d=data.dados||{};
+    if(!d.orc || !FLUXOS[d.orc.tipo]) return toast('Esse foi feito por uma versão antiga e o app não consegue abrir.');
+    doc=completar({ id:data.id, tipo:d.orc.tipo, orc:d.orc, ctr:d.ctr||null, pdf:!!d.pdf,
+      status:data.status, historico:data.historico||[], criadoPor:data.criado_por, atualizado:data.atualizado_em, pronto:true });
+    telaPronto(true);
+  }catch(e){ console.warn(e); toast('Não deu pra abrir. Confira a internet e tente de novo.'); }
+  finally{ if(botao){ botao.disabled=false; if(txt) botao.querySelector('b').textContent=txt; } }
 }
 
 function novo(tipo){
@@ -1326,7 +1364,9 @@ async function desenharFolhas(){
   const minha=++vezFolhas;
   const box=document.getElementById('folhas'); if(!box) return;
   const r=document.getElementById('renderPrev');
-  r.innerHTML=documento().pags.join(''); try{ await document.fonts.ready; }catch(e){} ajustar(r);
+  try{ r.innerHTML=documento().pags.join(''); }
+  catch(e){ console.warn(e); box.innerHTML='<p class="dica">Não deu pra montar a prévia deste registro. Toque em “Mudar” nas linhas acima pra conferir os dados.</p>'; return; }
+  try{ await document.fonts.ready; }catch(e){} ajustar(r);
   if(minha!==vezFolhas || !document.getElementById('folhas')) return;
   const s=Math.min(1,box.clientWidth/794);
   box.innerHTML='';
@@ -1364,6 +1404,7 @@ history.pushState({cb:1},'');
 window.addEventListener('popstate',()=>{ const b=document.getElementById('bVoltar'); if(b){ b.click(); history.pushState({cb:1},''); } });
 
 async function iniciar(){
+  try{ localStorage.removeItem('cb_msg'); }catch(e){}   // sobra da função de ajeitar mensagem, que foi retirada
   app().innerHTML='<div class="tela"><main class="conteudo"><p class="subt">Abrindo…</p></main></div>';
   try{
     if(window.supabase && CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY){
